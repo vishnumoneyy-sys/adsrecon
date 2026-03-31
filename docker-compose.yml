@@ -1,0 +1,24 @@
+version: '3.8'
+services:
+  adsrecon:
+    build: .
+    ports:
+      - "8000:8000"
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///app/adsrecon.db
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATAIMPULSE_API_KEY=${DATAIMPULSE_API_KEY}
+      - BROWSER_POOL_SIZE=3
+      - SCREENSHOTS_DIR=/app/screenshots
+      - HTML_DUMPS_DIR=/app/html_dumps
+    volumes:
+      - ./adsrecon.db:/app/adsrecon.db
+      - screenshots:/app/screenshots
+      - html_dumps:/app/html_dumps
+    restart: unless-stopped
+
+volumes:
+  screenshots:
+  html_dumps:

@@ -1,0 +1,15 @@
+*.db
+.env
+*.log
+logs/
+screenshots/
+html_dumps/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+build/
+*.egg-info/
+.DS_Store
+test_screenshot*.png

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AdSpy Elite — ADSRECON</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ NAVBAR ============ -->
+  <nav class="navbar">
+    <a class="navbar-brand" href="#">
+      <span class="brand-dot"></span>
+      <span class="brand-name">ADSPY ELITE</span>
+    </a>
+
+    <div class="navbar-search">
+      <span class="search-icon">&#128269;</span>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search ads by keyword, domain, page name..."
+        autocomplete="off"
+      />
+      <button class="scrape-btn" id="scrapeBtn" title="Scrape from URL">SCRAPE</button>
+      <button class="auto-scrape-btn" id="autoScrapeBtn" title="Auto Scrape by category">AUTO SCRAPE</button>
+      <button class="demo-btn" id="loadDemoBtn" title="Load demo ads">LOAD DEMO</button>
+    </div>
+
+    <div class="navbar-center">
+      <div class="tab-toggle">
+        <button id="tabSearch" class="is-active">SEARCH</button>
+        <button id="tabScraped">SCRAPED</button>
+        <button id="tabDemo">DEMO</button>
+      </div>
+    </div>
+
+    <div class="status-indicators">
+      <div class="status-chip">
+        <span class="dot ok" id="backendDot"></span>
+        <span>Backend</span>
+      </div>
+      <div class="status-chip">
+        <span class="dot" id="browserDot"></span>
+        <span id="browserCount">0 browsers</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ MAIN LAYOUT ============ -->
+  <div class="main-layout detail-closed" id="mainLayout">
+
+    <!-- ---- LEFT SIDEBAR ---- -->
+    <aside class="sidebar" id="sidebar">
+
+      <!-- Category Filters -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Nutra Categories</div>
+        <div class="category-list" id="categoryList">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Status Filters -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Status</div>
+        <div class="status-options" id="statusOptions">
+          <label class="status-option is-active" data-status="">
+            <input type="radio" name="statusFilter" value="" checked style="display:none" />
+            <span>All</span>
+          </label>
+          <label class="status-option" data-status="active">
+            <input type="radio" name="statusFilter" value="active" style="display:none" />
+            <span>Active</span>
+          </label>
+          <label class="status-option" data-status="inactive">
+            <input type="radio" name="statusFilter" value="inactive" style="display:none" />
+            <span>Inactive</span>
+          </label>
+          <label class="status-option" data-status="cloaked">
+            <input type="radio" name="statusFilter" value="cloaked" style="display:none" />
+            <span>Cloaked</span>
+          </label>
+          <label class="status-option" data-status="decoy">
+            <input type="radio" name="statusFilter" value="decoy" style="display:none" />
+            <span>Decoy</span>
+          </label>
+          <label class="status-option" data-status="real">
+            <input type="radio" name="statusFilter" value="real" style="display:none" />
+            <span>Real Nutra</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Saved Only Toggle -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">View</div>
+        <div class="toggle-row" id="savedOnlyToggle">
+          <span>Saved Only</span>
+          <div class="toggle-switch"></div>
+        </div>
+      </div>
+
+      <!-- Sort -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Sort By</div>
+        <select class="sort-select" id="sortSelect">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="score_high">Aggression: High</option>
+          <option value="score_low">Aggression: Low</option>
+          <option value="saved">Saved First</option>
+        </select>
+      </div>
+
+      <!-- Export -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Export</div>
+        <div class="action-row">
+          <button class="btn btn-ghost btn-sm" id="exportCsvBtn">Export CSV</button>
+          <button class="btn btn-ghost btn-sm" id="exportJsonBtn">Export JSON</button>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ---- CENTER AD GRID ---- -->
+    <div class="ad-grid-area">
+      <div class="grid-toolbar">
+        <span class="result-count">
+          <strong id="resultCountNum">0</strong> ads found
+          <span id="resultFiltered" style="display:none; color: var(--text-muted)"> &mdash; filtered</span>
+        </span>
+        <div class="toolbar-actions">
+          <button class="btn btn-ghost btn-sm" id="clearFiltersBtn" title="Clear all filters">Clear Filters</button>
+        </div>
+      </div>
+      <div class="ad-grid" id="adGrid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- ---- RIGHT DETAIL PANEL ---- -->
+    <aside class="detail-panel" id="detailPanel">
+
+      <div class="detail-header">
+        <div class="detail-page-name" id="detailPageName">Ad Detail</div>
+        <button class="detail-close-btn" id="detailCloseBtn" title="Close">&#10005;</button>
+      </div>
+
+      <div class="detail-tabs" id="detailTabs">
+        <button class="detail-tab is-active" data-tab="info">INFO</button>
+        <button class="detail-tab" data-tab="preview">PREVIEW</button>
+        <button class="detail-tab" data-tab="rips">RIPS</button>
+      </div>
+
+      <div class="detail-body" id="detailBody">
+
+        <!-- INFO TAB -->
+        <div class="detail-tab-content" id="tabInfo" style="display:flex;flex-direction:column;gap:14px;">
+
+          <!-- Classification badges -->
+          <div class="detail-section" id="detailClassification">
+            <div class="detail-section-title">Classification</div>
+            <div class="nutra-chips" id="detailNutraChips"></div>
+            <div id="detailBadgeRow" style="display:flex;gap:6px;margin-top:4px;"></div>
+            <div id="detailAggression" style="margin-top:8px;"></div>
+          </div>
+
+          <!-- Ad Text -->
+          <div class="detail-section">
+            <div class="detail-section-title">Ad Text</div>
+            <div class="detail-text" id="detailText"></div>
+          </div>
+
+          <!-- URLs -->
+          <div class="detail-section">
+            <div class="detail-section-title">URLs</div>
+            <div id="detailUrls"></div>
+          </div>
+
+          <!-- Thumbnails -->
+          <div class="detail-section" id="detailThumbs" style="display:none;">
+            <div class="detail-section-title">Thumbnails</div>
+            <div id="detailThumbGallery" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+          </div>
+
+          <!-- Video -->
+          <div class="detail-section" id="detailVideo" style="display:none;">
+            <div class="detail-section-title">Video</div>
+            <div class="video-container" id="detailVideoContainer">
+              <div class="video-placeholder" id="detailVideoPlaceholder">No video</div>
+            </div>
+          </div>
+
+          <!-- Hook -->
+          <div class="detail-section" id="detailHook" style="display:none;">
+            <div class="detail-section-title">Hook Type</div>
+            <div id="detailHookType" class="detail-text"></div>
+          </div>
+
+          <!-- Matched Keywords -->
+          <div class="detail-section" id="detailKeywords" style="display:none;">
+            <div class="detail-section-title">Matched Keywords</div>
+            <div class="nutra-chips" id="detailMatchedKeywords"></div>
+          </div>
+
+        </div>
+
+        <!-- PREVIEW TAB -->
+        <div class="detail-tab-content" id="tabPreview" style="display:none;flex-direction:column;gap:10px;">
+
+          <div class="action-row">
+            <div class="device-toggle" id="deviceToggle">
+              <button class="is-active" data-device="desktop">&#128187; Desktop</button>
+              <button data-device="mobile">&#128241; Mobile</button>
+            </div>
+            <button class="btn btn-danger btn-sm" id="ripLanderBtn">
+              <span class="spinner-sm" id="ripSpinner" style="display:none;"></span>
+              Rip Lander
+            </button>
+          </div>
+
+          <div class="preview-container" id="previewContainer">
+            <div class="preview-toolbar" id="previewToolbar" style="display:none;">
+              <span class="preview-url" id="previewUrl"></span>
+            </div>
+            <div class="preview-loading" id="previewLoading">
+              <div class="spinner"></div>
+              <span>Ripping lander...</span>
+            </div>
+            <div class="preview-loading" id="previewEmpty" style="display:none;">
+              <span>Click "Rip Lander" to capture the landing page</span>
+            </div>
+            <iframe id="previewIframe" class="preview-iframe" style="display:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+            <img id="previewImage" class="preview-image" style="display:none;" alt="Lander screenshot" />
+          </div>
+
+          <!-- Classify -->
+          <div class="detail-section">
+            <button class="btn btn-primary" id="classifyBtn" style="width:100%;">
+              <span class="spinner-sm" id="classifySpinner" style="display:none;"></span>
+              Classify Ad
+            </button>
+          </div>
+
+          <!-- Classification results -->
+          <div id="classifyResults" style="display:none;flex-direction:column;gap:8px;">
+            <div class="detail-section-title">Classification Results</div>
+            <div id="classifyResultsBody"></div>
+          </div>
+
+        </div>
+
+        <!-- RIPS TAB -->
+        <div class="detail-tab-content" id="tabRips" style="display:none;flex-direction:column;gap:10px;">
+          <div id="ripsList"></div>
+          <div class="empty-state" id="ripsEmpty">
+            <div class="empty-icon">&#128247;</div>
+            <div class="empty-title">No rips yet</div>
+            <div class="empty-sub">Use the Preview tab to rip this lander</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Detail Actions -->
+      <div style="padding:12px 16px;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
+        <div class="action-row">
+          <button class="btn btn-primary" id="detailSaveBtn">
+            <span>&#9733;</span> Save
+          </button>
+          <button class="btn btn-ghost" id="detailOpenBtn">
+            <span>&#8599;</span> Open
+          </button>
+          <button class="btn btn-danger" id="detailDeleteBtn">
+            <span>&#128465;</span> Delete
+          </button>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- ============ BOTTOM BAR ============ -->
+  <footer class="bottom-bar">
+    <div class="bottom-stat">
+      Total: <strong id="statTotal">0</strong>
+    </div>
+    <div class="bottom-stat">
+      Active: <strong id="statActive">0</strong>
+    </div>
+    <div class="bottom-stat">
+      Saved: <strong id="statSaved">0</strong>
+    </div>
+    <div class="bottom-stat">
+      Cloaked: <strong id="statCloaked">0</strong>
+    </div>
+    <div class="bottom-bar right">
+      <div class="browser-pool-status" id="browserPoolStatus"></div>
+    </div>
+  </footer>
+
+</div><!-- #app -->
+
+<!-- ============ SCRAPE MODAL ============ -->
+<div id="scrapeModal" style="display:none;">
+  <div class="modal-overlay" id="scrapeModalOverlay">
+    <div class="modal" id="scrapeModalBox">
+
+      <!-- Tab switcher -->
+      <div class="modal-tabs">
+        <button class="modal-tab is-active" data-scrape-tab="single">Single Page</button>
+        <button class="modal-tab" data-scrape-tab="multi">Multi-Country</button>
+        <button class="modal-tab" data-scrape-tab="auto">Auto-Category</button>
+      </div>
+
+      <div class="modal-title" id="scrapeModalTitle">Scrape Meta Ads Library</div>
+
+      <!-- TAB: Single Page -->
+      <div id="scrapeTabSingle" class="scrape-tab-content">
+        <div class="form-group">
+          <label class="form-label">Page URL</label>
+          <input
+            type="url"
+            class="form-input"
+            id="modalPageUrl"
+            placeholder="https://www.facebook.com/ads/library/?view_all_page_id=..."
+          />
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+            Paste a Meta Ads Library transparency page URL
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <select class="form-select" id="modalCountry" style="width:100%;">
+            <option value="US">United States</option>
+            <option value="GB">United Kingdom</option>
+            <option value="CA">Canada</option>
+            <option value="AU">Australia</option>
+            <option value="DE">Germany</option>
+            <option value="FR">France</option>
+            <option value="BR">Brazil</option>
+            <option value="MX">Mexico</option>
+            <option value="JP">Japan</option>
+            <option value="IN">India</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- TAB: Multi-Country -->
+      <div id="scrapeTabMulti" class="scrape-tab-content" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Countries</label>
+          <div class="country-select-actions">
+            <button class="btn btn-ghost btn-sm" id="selectAllCountries">Select All</button>
+            <button class="btn btn-ghost btn-sm" id="clearAllCountries">Clear All</button>
+          </div>
+          <div class="country-checkbox-grid" id="countryCheckboxGrid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Keyword Override <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);">(optional)</span></label>
+          <input
+            type="text"
+            class="form-input"
+            id="modalMultiKeyword"
+            placeholder="Leave blank to use category keywords"
+          />
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+            Overrides category keywords for all selected countries
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Base Page URL <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);">(optional)</span></label>
+          <input
+            type="url"
+            class="form-input"
+            id="modalMultiPageUrl"
+            placeholder="https://www.facebook.com/ads/library/?active_status=active"
+          />
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+            Optional base URL; will be constructed from keywords if blank
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Auto-Category -->
+      <div id="scrapeTabAuto" class="scrape-tab-content" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Nutra Categories</label>
+          <div class="category-select-actions">
+            <button class="btn btn-ghost btn-sm" id="selectAllCategories">Select All</button>
+            <button class="btn btn-ghost btn-sm" id="clearAllCategories">Clear All</button>
+          </div>
+          <div class="category-checkbox-grid" id="categoryCheckboxGrid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Countries to Scrape</label>
+          <div class="country-select-actions">
+            <button class="btn btn-ghost btn-sm" id="selectAllCountriesAuto">Major Markets (4)</button>
+            <button class="btn btn-ghost btn-sm" id="clearAllCountriesAuto">Clear</button>
+          </div>
+          <div class="country-checkbox-grid" id="autoCountryCheckboxGrid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress bar (shown during scrape) -->
+      <div id="scrapeProgressArea" style="display:none;margin-top:16px;">
+        <div class="scrape-progress-label" id="scrapeProgressLabel">Scraping US (1/10)...</div>
+        <div class="scrape-progress-bar-wrap">
+          <div class="scrape-progress-bar" id="scrapeProgressBar" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="scrapeModalCancel">Cancel</button>
+        <button class="btn btn-primary" id="scrapeModalRun">
+          <span class="spinner-sm" id="scrapeSpinner" style="display:none;"></span>
+          <span id="scrapeModalRunLabel">Start Scrape</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
