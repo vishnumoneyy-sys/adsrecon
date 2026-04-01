@@ -177,6 +177,17 @@
           <option value="political_and_issue_ads">Political / Issue Ads</option>
         </select>
       </div>
+      <div class="ad-type-row">
+        <label>Search by:</label>
+        <select id="searchTypeSelect">
+          <option value="keyword">Keyword</option>
+          <option value="landing_page">Landing Page Domain</option>
+        </select>
+      </div>
+      <div class="input-group" id="landingPageGroup" style="display:none">
+        <input type="text" id="landingPageInput" placeholder="e.g. .xyz, .top, example.com" />
+        <button class="btn-primary" id="doLandingSearch">&#128269;</button>
+      </div>
     </div>
 
     <div class="filters-section">

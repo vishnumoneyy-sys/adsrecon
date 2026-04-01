@@ -168,13 +168,13 @@ body {
 }
 .input-group input:focus { border-color: var(--accent-cyan); }
 
-.country-row, .ad-type-row {
+.country-row, .ad-type-row, .search-type-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 4px;
 }
-.country-row label, .ad-type-row label {
+.country-row label, .ad-type-row label, .search-type-row label {
   font-size: 11px;
   color: var(--text-muted);
   min-width: 60px;

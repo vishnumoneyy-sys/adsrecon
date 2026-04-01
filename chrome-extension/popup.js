@@ -159,10 +159,39 @@
     const adTypeSelect = $('#adTypeSelect');
     if (adTypeSelect) {
       adTypeSelect.addEventListener('change', () => {
+        const searchType = ($('#searchTypeSelect')?.value) || 'keyword';
         const keyword = ($('#searchInput')?.value || '').trim();
         const country = ($('#countrySelect')?.value) || 'US';
         const adType = ($('#adTypeSelect')?.value) || 'all';
-        navigateToSearch(keyword, country, adType);
+        navigateToSearch(keyword, country, adType, searchType);
+      });
+    }
+
+    // Search type change — toggle domain input visibility
+    const searchTypeSelect = $('#searchTypeSelect');
+    if (searchTypeSelect) {
+      searchTypeSelect.addEventListener('change', () => {
+        const isDomain = searchTypeSelect.value === 'landing_page';
+        const landingGroup = $('#landingPageGroup');
+        const keywordInput = $('#searchInput');
+        if (landingGroup) landingGroup.style.display = isDomain ? 'flex' : 'none';
+        if (keywordInput) keywordInput.style.display = isDomain ? 'none' : 'block';
+        if (isDomain) {
+          const landingInput = $('#landingPageInput');
+          if (landingInput) landingInput.focus();
+        }
+      });
+    }
+
+    // Landing page search button
+    const doLandingBtn = $('#doLandingSearch');
+    if (doLandingBtn) doLandingBtn.addEventListener('click', doLandingSearch);
+
+    // Landing page input Enter key
+    const landingInput = $('#landingPageInput');
+    if (landingInput) {
+      landingInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doLandingSearch();
       });
     }
 
@@ -396,7 +425,7 @@
   }
 
   // ── Core navigation helper ──────────────────────────────────
-  async function navigateToSearch(keyword, country, adType) {
+  async function navigateToSearch(keyword, country, adType, searchType) {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const activeTab = tabs[0];
 
@@ -406,6 +435,10 @@
     targetUrl.searchParams.set('active_status', 'active');
     if (adType === 'political_and_issue_ads') {
       targetUrl.searchParams.set('ad_type', 'political_and_issue_ads');
+    }
+    // search_type: keyword_unordered (default) or landing_page
+    if (searchType === 'landing_page') {
+      targetUrl.searchParams.set('search_type', 'landing_page');
     }
 
     if (activeTab?.url?.includes('facebook.com/ads/library')) {
@@ -443,17 +476,30 @@
 
   // ── Search ─────────────────────────────────────────────────
   async function doSearch() {
+    const searchType = ($('#searchTypeSelect')?.value) || 'keyword';
     const keyword = ($('#searchInput')?.value || '').trim();
     const country = ($('#countrySelect')?.value) || 'US';
     const adType = ($('#adTypeSelect')?.value) || 'all';
-    await navigateToSearch(keyword, country, adType);
+    await navigateToSearch(keyword, country, adType, searchType);
+  }
+
+  // ── Landing page domain search ────────────────────────────
+  async function doLandingSearch() {
+    const domain = ($('#landingPageInput')?.value || '').trim();
+    if (!domain) { toast('Enter a domain first'); return; }
+    const country = ($('#countrySelect')?.value) || 'US';
+    const adType = ($('#adTypeSelect')?.value) || 'all';
+    // Strip leading dot if user typed ".xyz"
+    const cleanDomain = domain.replace(/^\.+/, '');
+    await navigateToSearch(cleanDomain, country, adType, 'landing_page');
   }
 
   // ── Country change (auto-triggered) ───────────────────────
   async function doCountrySearch(newCountry) {
+    const searchType = ($('#searchTypeSelect')?.value) || 'keyword';
     const keyword = ($('#searchInput')?.value || '').trim();
     const adType = ($('#adTypeSelect')?.value) || 'all';
-    await navigateToSearch(keyword, newCountry, adType);
+    await navigateToSearch(keyword, newCountry, adType, searchType);
   }
 
   // ── Filters ────────────────────────────────────────────────
