@@ -7,7 +7,9 @@ import asyncio
 
 from services.meta_scraper import MetaScraper, MetaAd
 from services.meta_browser_scraper import MetaBrowserScraper
+from services.meta_graph_api_scraper import MetaGraphApiScraper, GraphApiAd
 from services.nutra_classifier import NutraClassifier
+from services.token_store import save_fb_token, load_fb_token, clear_fb_token
 from models.ad import Ad
 from database import async_session_maker
 from sqlalchemy import select, func
@@ -79,6 +81,80 @@ class AdResponse(BaseModel):
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
+def _graph_ad_to_meta_ad(graph_ad: GraphApiAd) -> MetaAd:
+    """Convert a GraphApiAd to MetaAd for uniform DB storage."""
+    return MetaAd(
+        library_id=graph_ad.library_id,
+        page_id=graph_ad.page_id,
+        page_name=graph_ad.page_name,
+        ad_text=graph_ad.ad_text,
+        primary_image_url="",
+        video_url="",
+        landing_url=graph_ad.landing_url,
+        fbclid=graph_ad.fbclid,
+        platforms=graph_ad.platforms,
+        days_running=0,
+        impressions=graph_ad.impressions,
+        is_active=graph_ad.is_active,
+    )
+
+
+async def _classify_and_store_graph_ads(
+    graph_ads: list[GraphApiAd], db: AsyncSession, override_category: str = ""
+) -> list[dict]:
+    """Store GraphApiAd objects in DB and return summaries."""
+    stored = []
+    for graph_ad in graph_ads:
+        meta_ad = _graph_ad_to_meta_ad(graph_ad)
+        existing = await db.execute(
+            select(Ad).where(Ad.library_id == meta_ad.library_id)
+        )
+        db_ad = existing.scalar_one_or_none()
+
+        if not db_ad:
+            classification = nutra_classifier.classify(meta_ad.ad_text or "")
+            top_category = override_category if override_category else classification.top_category
+
+            db_ad = Ad(
+                library_id=meta_ad.library_id,
+                page_id=meta_ad.page_id,
+                page_name=meta_ad.page_name,
+                ad_text=meta_ad.ad_text,
+                primary_image_url=meta_ad.primary_image_url,
+                video_urls=[],
+                landing_url_clean=meta_ad.landing_url,
+                fbclid=meta_ad.fbclid,
+                platforms=meta_ad.platforms,
+                days_running=0,
+                impressions_estimate=meta_ad.impressions,
+                spend_estimate=meta_ad.spend,
+                countries=graph_ad.countries,
+                status="active" if meta_ad.is_active else "inactive",
+                category=top_category,
+                is_real_nutra=classification.is_nutra,
+                nutra_score=classification.aggression_score,
+                cloak_status="pending",
+                saved=False
+            )
+            db.add(db_ad)
+            await db.commit()
+            await db.refresh(db_ad)
+
+        stored.append({
+            "id": db_ad.id,
+            "library_id": db_ad.library_id,
+            "page_name": db_ad.page_name,
+            "ad_text": (db_ad.ad_text[:100] + "...") if db_ad.ad_text and len(db_ad.ad_text) > 100 else db_ad.ad_text,
+            "landing_url": db_ad.landing_url_clean,
+            "category": db_ad.category,
+            "is_nutra": db_ad.is_real_nutra,
+            "impressions": graph_ad.impressions if graph_ad.impressions else "",
+            "spend": graph_ad.spend if graph_ad.spend else "",
+            "countries": graph_ad.countries,
+        })
+    return stored
+
+
 async def _classify_and_store_ads(meta_ads: list[MetaAd], db: AsyncSession, override_category: str = "") -> list[dict]:
     """
     Classify each MetaAd with the nutra classifier and store in the DB.
@@ -259,71 +335,87 @@ async def search_ads(
 ):
     """
     Search Meta Ads Library by keyword.
-    Uses Playwright browser (primary) with httpx fallback.
-    Optionally filter by nutra category and classify results.
+    Priority: Graph API (free, fast, no proxies) → Browser → httpx fallback.
     """
     logger.info(f"Searching keyword: {q}  country={country}  media_type={media_type}  category={category}")
 
+    # ── 1. Try Graph API (FREE — no proxies, no browser needed) ─────────────────
+    graph_ads: list[dict] = []
+    fbclid_saved = False
+
+    token = load_fb_token()
+    if token:
+        try:
+            scraper = MetaGraphApiScraper(access_token=token)
+            raw_ads, err = await scraper.search_ads(query=q, country=country, limit=100)
+            await scraper.close()
+
+            if raw_ads and not err:
+                async with async_session_maker() as db:
+                    stored = await _classify_and_store_graph_ads(raw_ads, db)
+                    for ad in stored:
+                        ad["country"] = country
+                        graph_ads.append(ad)
+                fbclid_saved = True
+                logger.info(f"Graph API: found {len(graph_ads)} ads for '{q}' in {country}")
+        except Exception as graph_err:
+            logger.warning(f"Graph API failed for '{q}': {graph_err}")
+
+    # ── 2. Browser fallback (if Graph API returned nothing) ─────────────────────
     meta_ads = []
     method_used = "none"
-    browser_pool = request.app.state.browser_pool
 
-    # Try browser-based search first
-    if browser_pool and browser_pool.instances:
-        try:
-            async with MetaBrowserScraper(browser_pool) as browser_scraper:
-                meta_ads = await browser_scraper.search_keyword(q, country)
-                method_used = "browser"
-        except Exception as browser_err:
-            logger.warning(f"Browser search failed for '{q}' in {country}: {browser_err}")
+    if not graph_ads:
+        browser_pool = request.app.state.browser_pool
 
-    # Fall back to httpx
-    if not meta_ads:
-        try:
-            async with MetaScraper() as scraper:
-                meta_ads = await scraper.search_keyword(q, country)
-                method_used = "http"
-        except Exception as e:
-            logger.error(f"Search failed (both methods): {e}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Meta blocked the search: {str(e)}. Try the Auto Scrape feature."
-            )
+        if browser_pool and browser_pool.instances:
+            try:
+                async with MetaBrowserScraper(browser_pool) as browser_scraper:
+                    meta_ads = await browser_scraper.search_keyword(q, country)
+                    method_used = "browser"
+            except Exception as browser_err:
+                logger.warning(f"Browser search failed for '{q}' in {country}: {browser_err}")
 
-    if not meta_ads:
-        return {
-            "ads": [],
-            "total": 0,
-            "keyword": q,
-            "country": country,
-            "message": f"No ads found (method={method_used}). Meta may be blocking this search.",
-            "source": "search"
-        }
+        # httpx fallback
+        if not meta_ads:
+            try:
+                async with MetaScraper() as scraper:
+                    meta_ads = await scraper.search_keyword(q, country)
+                    method_used = "http"
+            except Exception as e:
+                logger.error(f"Search failed (both methods): {e}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Meta blocked the search: {str(e)}. Try the Auto Scrape feature."
+                )
 
-    # Optionally classify with nutra classifier and filter by category
-    results = []
-    for a in meta_ads:
-        if category:
-            classification = nutra_classifier.classify(a.ad_text or "")
-            top_cat = classification.top_category
-            # Support partial match (e.g. "sugar" matches "blood_sugar")
-            if category.lower() not in top_cat.lower():
-                continue
+        if not meta_ads:
+            return {
+                "ads": [],
+                "total": 0,
+                "keyword": q,
+                "country": country,
+                "message": f"No ads found (method={method_used}). Meta may be blocking this search.",
+                "source": "search"
+            }
 
-        results.append({
-            "library_id": a.library_id,
-            "page_name": a.page_name,
-            "ad_text": (a.ad_text[:200] + "...") if a.ad_text and len(a.ad_text) > 200 else a.ad_text,
-            "landing_url": a.landing_url,
-            "platforms": a.platforms
-        })
+        # Store browser/httpx results
+        async with async_session_maker() as db:
+            stored = await _classify_and_store_ads(meta_ads, db)
+            for ad in stored:
+                ad["country"] = country
+            graph_ads = stored
+            method_used = method_used
 
     return {
-        "ads": results,
-        "total": len(results),
+        "ads": graph_ads,
+        "total": len(graph_ads),
         "keyword": q,
         "country": country,
-        "source": "search"
+        "method": "graph_api" if fbclid_saved else method_used,
+        "message": f"Found {len(graph_ads)} ads (method={method_used if not fbclid_saved else 'graph_api'})",
+        "source": "search",
+        "fb_token_configured": bool(token)
     }
 
 
@@ -532,6 +624,92 @@ async def scrape_countries(request: Request, keyword: str = Query(default="nutra
         "keyword": keyword,
         "message": f"Scraped {len(all_ads)} ads across {len(SUPPORTED_COUNTRIES)} countries",
         "source": "multi_country"
+    }
+
+
+# GET /api/ads/settings — Check token status
+@router.get("/settings")
+async def get_settings():
+    """Returns the current Facebook API token status (masked)."""
+    token = load_fb_token()
+    return {
+        "fb_token_configured": bool(token),
+        "fb_token_masked": ("*" * 20 + token[-6:]) if token else "",
+        "scraping_methods": ["graph_api", "browser", "http"],
+        "primary_method": "graph_api" if token else "browser",
+        "token_help_url": "https://developers.facebook.com/tools/explorer/",
+    }
+
+
+# POST /api/ads/settings — Save Facebook access token
+@router.post("/settings")
+async def save_settings(token: str = Query(...)):
+    """Save a Facebook Graph API access token (stored in .fb_token)."""
+    if len(token) < 20:
+        raise HTTPException(status_code=400, detail="Invalid token — too short")
+    try:
+        scraper = MetaGraphApiScraper(access_token=token)
+        valid, msg = await scraper.test_connection()
+        await scraper.close()
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Token invalid: {msg}. Get a new one at https://developers.facebook.com/tools/explorer/"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Token validation failed: {str(e)}")
+    save_fb_token(token)
+    logger.info("Facebook access token saved successfully")
+    return {
+        "success": True,
+        "message": "Token saved. Graph API scraping is now active (free, no proxies needed).",
+        "token_masked": ("*" * 20 + token[-6:]),
+    }
+
+
+# DELETE /api/ads/settings — Clear the stored token
+@router.delete("/settings")
+async def clear_settings():
+    """Remove the stored Facebook access token."""
+    clear_fb_token()
+    return {"success": True, "message": "Token cleared."}
+
+
+# GET /api/ads/test-graph-api — Test the Graph API with current token
+@router.get("/test-graph-api")
+async def test_graph_api():
+    """Test if the stored Graph API token works. Returns sample ads."""
+    token = load_fb_token()
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="No token configured. Set it via POST /api/ads/settings?token=YOUR_TOKEN"
+        )
+    scraper = MetaGraphApiScraper(access_token=token, request_delay=0.5)
+    valid, msg = await scraper.test_connection()
+    await scraper.close()
+    if not valid:
+        raise HTTPException(status_code=400, detail=f"Token invalid: {msg}")
+    try:
+        raw_ads, err = await scraper.search_ads(query="supplement", country="US", limit=3)
+        await scraper.close()
+    except Exception as test_err:
+        return {
+            "token_valid": True,
+            "test_search": "failed",
+            "error": str(test_err),
+            "message": "Token valid but test search failed."
+        }
+    if err:
+        raise HTTPException(status_code=400, detail=f"Test search failed: {err}")
+    return {
+        "token_valid": True,
+        "test_search": "success",
+        "ads_found": len(raw_ads),
+        "sample": [{"id": a.library_id, "page": a.page_name, "text": a.ad_text[:60]} for a in raw_ads[:2]],
+        "message": f"Graph API is working! Found {len(raw_ads)} test ads."
     }
 
 
@@ -844,3 +1022,6 @@ async def delete_ad(ad_id: int, request: Request):
         await db.commit()
 
         return {"deleted": True, "id": ad_id, "source": "list"}
+
+
+# GET /api/ads/settings — Check current API token status

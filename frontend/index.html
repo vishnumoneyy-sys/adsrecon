@@ -126,6 +126,45 @@
         </div>
       </div>
 
+      <!-- API Settings -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">
+          API Settings
+          <span class="api-token-badge" id="apiTokenBadge" style="display:none"></span>
+        </div>
+        <div class="api-settings-area" id="apiSettingsArea">
+          <div class="api-status-row" id="apiStatusRow">
+            <span class="api-status-dot" id="apiStatusDot"></span>
+            <span class="api-status-text" id="apiStatusText">Checking...</span>
+          </div>
+          <div id="apiNoToken" style="display:none">
+            <p style="font-size:11px; color: var(--text-muted); margin: 6px 0 8px; line-height:1.4;">
+              Add a Facebook token to enable <strong style="color:#4CAF50">free scraping</strong> (no proxies needed).
+            </p>
+            <a href="https://developers.facebook.com/tools/explorer/" target="_blank" class="token-help-link">
+              Get free token &rarr;
+            </a>
+          </div>
+          <div id="apiHasToken" style="display:none">
+            <p class="token-masked" id="tokenMasked"></p>
+            <button class="btn btn-ghost btn-sm" id="testTokenBtn" style="width:100%; margin-bottom:4px">Test Connection</button>
+            <button class="btn btn-ghost btn-sm" id="clearTokenBtn" style="width:100%; font-size:10px; color: var(--text-muted)">Remove Token</button>
+          </div>
+        </div>
+        <div id="apiTokenForm" style="display:none; margin-top:8px">
+          <textarea id="apiTokenInput" placeholder="Paste your Facebook access token here..." rows="3"
+            style="width:100%; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11px; padding:6px; resize:none; font-family:inherit;"></textarea>
+          <div style="margin-top:6px; display:flex; gap:6px;">
+            <button class="btn btn-primary btn-sm" id="saveTokenBtn" style="flex:1">Save Token</button>
+            <button class="btn btn-ghost btn-sm" id="cancelTokenBtn" style="flex:1">Cancel</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="showTokenFormBtn" style="width:100%; margin-top:6px; font-size:11px;">
+          Set API Token
+        </button>
+        <div class="api-result" id="apiResult" style="display:none; margin-top:8px; font-size:11px;"></div>
+      </div>
+
     </aside>
 
     <!-- ---- CENTER AD GRID ---- -->

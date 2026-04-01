@@ -29,6 +29,8 @@ class Ad(database.Base):
     platforms = Column(JSON, default=list)  # ["facebook", "instagram", "messenger", "audience_network"]
     days_running = Column(Integer, default=0)
     impressions_estimate = Column(String(50))  # "952" or "1.2K"
+    spend_estimate = Column(String(50))        # "$100-$500" from Graph API
+    countries = Column(JSON, default=list)      # ["US","GB"] delivery countries
 
     # Classification
     category = Column(String(50))  # nutra vertical

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     cloaking_strategy: str = "fbclid_first"  # fbclid_first | proxy_first
     force_proxy: bool = False
 
+    # Facebook Graph API (free, no proxies needed)
+    # Get token at: https://developers.facebook.com/tools/explorer/
+    facebook_access_token: str = ""
+
     class Config:
         env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"

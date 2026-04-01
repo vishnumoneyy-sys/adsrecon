@@ -265,6 +265,71 @@ html, body {
   transform: translateY(-50%) scale(0.97);
 }
 
+/* ---- API Token Settings ---- */
+.api-settings-area {
+  padding: 0;
+}
+
+.api-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.api-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.api-status-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.api-token-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-teal);
+  color: #000;
+  margin-left: 6px;
+  letter-spacing: 0.05em;
+}
+
+.token-masked {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+  margin: 4px 0;
+  word-break: break-all;
+}
+
+.token-help-link {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent-teal);
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+
+.token-help-link:hover {
+  text-decoration: underline;
+}
+
+.api-result {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
 /* ---- Main Layout ---- */
 .main-layout {
   display: grid;

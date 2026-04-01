@@ -182,6 +182,113 @@
   };
 
   /* ============================================================
+     API TOKEN (Facebook Graph API)
+  ============================================================ */
+
+  async function checkTokenStatus() {
+    try {
+      const data = await apiGet('/api/ads/settings');
+      const badge = document.getElementById('apiTokenBadge');
+      const noToken = document.getElementById('apiNoToken');
+      const hasToken = document.getElementById('apiHasToken');
+      const dot = document.getElementById('apiStatusDot');
+      const text = document.getElementById('apiStatusText');
+      const masked = document.getElementById('tokenMasked');
+
+      if (data.fb_token_configured) {
+        dot.style.background = '#4CAF50';
+        text.textContent = 'Graph API: Active (free)';
+        badge.textContent = 'FREE';
+        badge.style.background = '#4CAF50';
+        badge.style.display = 'inline';
+        noToken.style.display = 'none';
+        hasToken.style.display = 'block';
+        masked.textContent = data.fb_token_masked || '';
+      } else {
+        dot.style.background = '#ff9800';
+        text.textContent = 'Graph API: Not configured';
+        badge.style.display = 'none';
+        noToken.style.display = 'block';
+        hasToken.style.display = 'none';
+      }
+    } catch {
+      // Settings endpoint not available yet — ignore
+    }
+  }
+
+  async function saveToken() {
+    const input = document.getElementById('apiTokenInput');
+    const result = document.getElementById('apiResult');
+    const token = input.value.trim();
+    if (!token) return;
+
+    result.style.display = 'block';
+    result.textContent = 'Validating token...';
+    result.style.color = 'var(--text-muted)';
+
+    try {
+      const data = await apiPost('/api/ads/settings?' + new URLSearchParams({ token }));
+      result.style.color = '#4CAF50';
+      result.textContent = data.message;
+      input.value = '';
+      document.getElementById('apiTokenForm').style.display = 'none';
+      document.getElementById('showTokenFormBtn').style.display = 'block';
+      await checkTokenStatus();
+      await loadAds();
+    } catch (err) {
+      result.style.color = '#f44336';
+      result.textContent = 'Error: ' + err.message;
+    }
+  }
+
+  async function testToken() {
+    const result = document.getElementById('apiResult');
+    const btn = document.getElementById('testTokenBtn');
+    result.style.display = 'block';
+    result.style.color = 'var(--text-muted)';
+    result.textContent = 'Testing...';
+    btn.disabled = true;
+
+    try {
+      const data = await apiGet('/api/ads/test-graph-api');
+      result.style.color = '#4CAF50';
+      const sample = data.sample && data.sample[0]
+        ? `Sample ad: "${data.sample[0].text}" from ${data.sample[0].page}`
+        : '';
+      result.textContent = `SUCCESS! ${data.ads_found} test ads found. ${sample}`;
+    } catch (err) {
+      result.style.color = '#f44336';
+      result.textContent = 'Failed: ' + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function clearToken() {
+    if (!confirm('Remove the Facebook access token?')) return;
+    try {
+      const data = await apiDelete('/api/ads/settings');
+      showNotification('Token removed', 'success');
+      await checkTokenStatus();
+    } catch (err) {
+      showNotification('Failed to remove token: ' + err.message, 'error');
+    }
+  }
+
+  function showTokenForm() {
+    document.getElementById('apiTokenForm').style.display = 'block';
+    document.getElementById('showTokenFormBtn').style.display = 'none';
+    document.getElementById('apiResult').style.display = 'none';
+    document.getElementById('apiTokenInput').focus();
+  }
+
+  function cancelTokenForm() {
+    document.getElementById('apiTokenForm').style.display = 'none';
+    document.getElementById('showTokenFormBtn').style.display = 'block';
+    document.getElementById('apiTokenInput').value = '';
+  }
+
+  /* ============================================================
      UTILITIES
   ============================================================ */
 
@@ -339,7 +446,7 @@
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body || {}),
     });
     if (!res.ok) {
       const err = await res.text().catch(() => 'Unknown error');
@@ -349,7 +456,10 @@
   }
 
   async function apiDelete(path) {
-    const res = await fetch(`${API_BASE}${path}`, { method: 'DELETE' });
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
     if (!res.ok) {
       const err = await res.text().catch(() => 'Unknown error');
       throw new Error(`API ${res.status}: ${err}`);
@@ -1787,6 +1897,17 @@
     els.tabScraped.addEventListener('click', () => switchMainTab('scraped'));
     els.tabDemo.addEventListener('click', () => switchMainTab('demo'));
 
+    // API Token
+    document.getElementById('showTokenFormBtn').addEventListener('click', showTokenForm);
+    document.getElementById('cancelTokenBtn').addEventListener('click', cancelTokenForm);
+    document.getElementById('saveTokenBtn').addEventListener('click', saveToken);
+    document.getElementById('testTokenBtn').addEventListener('click', testToken);
+    document.getElementById('clearTokenBtn').addEventListener('click', clearToken);
+    document.getElementById('apiTokenInput').addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') saveToken();
+      if (e.key === 'Escape') cancelTokenForm();
+    });
+
     // Detail close
     els.detailCloseBtn.addEventListener('click', closeDetail);
 
@@ -1987,6 +2108,7 @@
 
     await checkBackendHealth();
     await loadAds();
+    await checkTokenStatus();
 
     setInterval(checkBackendHealth, 30000);
   }
