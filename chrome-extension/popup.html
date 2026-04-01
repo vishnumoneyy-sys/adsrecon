@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width" />
+<title>ADSRECON</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+<div class="panel">
+
+  <!-- Header -->
+  <div class="panel-header">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">ADSRECON</span>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="refreshBtn" title="Refresh ads">&#8635;</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- Login warning -->
+  <div class="login-warning" id="loginWarning" style="display:none">
+    <span>&#9888;</span>
+    <span>Please <a href="https://www.facebook.com/ads/library/" target="_blank">open Facebook Ad Library</a> and log in first.</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar" id="tabBar">
+    <button class="tab active" data-tab="search">Search</button>
+    <button class="tab" data-tab="tracked">Tracked Pages</button>
+    <button class="tab" data-tab="saved">Saved Ads</button>
+  </div>
+
+  <!-- Search Tab -->
+  <div class="tab-content active" id="tab-search">
+    <div class="search-section">
+      <div class="input-group">
+        <input type="text" id="searchInput" placeholder="Keyword, domain, page name..." />
+        <button class="btn-primary" id="doSearch">&#128269;</button>
+      </div>
+      <div class="country-row">
+        <label>Country:</label>
+        <select id="countrySelect">
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="CA">Canada</option>
+          <option value="AU">Australia</option>
+          <option value="DE">Germany</option>
+          <option value="FR">France</option>
+          <option value="BR">Brazil</option>
+          <option value="MX">Mexico</option>
+          <option value="IN">India</option>
+          <option value="JP">Japan</option>
+        </select>
+      </div>
+      <div class="ad-type-row">
+        <label>Ad Type:</label>
+        <select id="adTypeSelect">
+          <option value="all">All Ads</option>
+          <option value="political_and_issue_ads">Political / Issue Ads</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="filters-section">
+      <div class="filter-header">
+        <span class="filter-title">Nutra Category</span>
+        <button class="clear-btn" id="clearCatFilter">Clear</button>
+      </div>
+      <div class="category-chips" id="categoryChips">
+        <button class="chip" data-cat="weight_loss">Weight Loss</button>
+        <button class="chip" data-cat="blood_sugar">Blood Sugar</button>
+        <button class="chip" data-cat="prostate">Prostate</button>
+        <button class="chip" data-cat="skin_beauty">Skin & Beauty</button>
+        <button class="chip" data-cat="joint_pain">Joint Pain</button>
+        <button class="chip" data-cat="energy_stamina">Energy</button>
+        <button class="chip" data-cat="gut_digestion">Gut Health</button>
+        <button class="chip" data-cat="male_enhancement">Male Enhancement</button>
+        <button class="chip" data-cat="anti_aging">Anti-Aging</button>
+        <button class="chip" data-cat="heart_blood">Heart Health</button>
+      </div>
+      <div class="filter-header" style="margin-top:8px">
+        <span class="filter-title">Score</span>
+      </div>
+      <div class="score-row">
+        <span>Aggression:</span>
+        <input type="range" id="scoreRange" min="0" max="100" value="0" />
+        <span id="scoreVal">0</span>
+      </div>
+      <div class="score-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="nutraOnly" />
+          <span>Real Nutra only</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="savedOnly" />
+          <span>Saved only</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results-section">
+      <div class="results-header">
+        <span class="results-count" id="resultsCount">0 ads</span>
+        <button class="btn-sm btn-secondary" id="exportBtn">Export CSV</button>
+      </div>
+      <div class="results-list" id="resultsList">
+        <div class="empty-state">
+          <div class="empty-icon">&#128269;</div>
+          <div class="empty-text">Open Facebook Ad Library and search for ads</div>
+          <button class="btn-sm btn-primary" id="openLibrary">Open Ad Library</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Domain Filter Section -->
+    <div class="domain-section" id="domainSection">
+      <div class="filter-header">
+        <span class="filter-title">Domain Filter</span>
+        <button class="clear-btn" id="clearDomainBtn">Clear</button>
+      </div>
+      <div class="domain-controls">
+        <label class="toggle-label">
+          <input type="checkbox" id="shadyOnly" />
+          <span class="toggle-text">Shady TLDs only</span>
+          <span class="toggle-hint" id="shadyCount">(0)</span>
+        </label>
+      </div>
+      <div class="domain-tld-list" id="domainTldList">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Tracked Pages Tab -->
+  <div class="tab-content" id="tab-tracked">
+    <div class="add-page-section">
+      <input type="text" id="newPageInput" placeholder="Enter Facebook Page name or URL..." />
+      <button class="btn-primary" id="addPageBtn">Track Page</button>
+    </div>
+    <div class="tracked-list" id="trackedList">
+      <div class="empty-state">
+        <div class="empty-icon">&#128278;</div>
+        <div class="empty-text">No pages tracked yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved Ads Tab -->
+  <div class="tab-content" id="tab-saved">
+    <div class="saved-list" id="savedList">
+      <div class="empty-state">
+        <div class="empty-icon">&#9734;</div>
+        <div class="empty-text">No saved ads yet</div>
+      </div>
+    </div>
+    <div class="saved-actions">
+      <button class="btn-sm btn-secondary" id="exportSavedBtn">Export Saved</button>
+      <button class="btn-sm btn-danger" id="clearSavedBtn">Clear All</button>
+    </div>
+  </div>
+
+  <!-- Ad Detail Modal -->
+  <div class="modal" id="adModal" style="display:none">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title" id="modalTitle">Ad Details</span>
+        <button class="icon-btn" id="closeModal">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter">
+        <button class="btn-sm btn-secondary" id="visitPageBtn">Visit Page</button>
+        <button class="btn-sm btn-secondary" id="ripBtn">Rip Landing Page</button>
+        <button class="btn-sm btn-primary" id="saveAdBtn">&#9734; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" style="display:none"></div>
+
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
