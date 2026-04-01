@@ -20,6 +20,7 @@
       savedOnly: false,
       shadyOnly: false,
       selectedTlds: new Set(),
+      domainFilter: '',
     },
     connected: false,
     adCount: 0,
@@ -171,11 +172,16 @@
     const searchTypeSelect = $('#searchTypeSelect');
     if (searchTypeSelect) {
       searchTypeSelect.addEventListener('change', () => {
-        const isDomain = searchTypeSelect.value === 'landing_page';
+        const isDomain = searchTypeSelect.value === 'domain';
         const landingGroup = $('#landingPageGroup');
         const keywordInput = $('#searchInput');
         if (landingGroup) landingGroup.style.display = isDomain ? 'flex' : 'none';
         if (keywordInput) keywordInput.style.display = isDomain ? 'none' : 'block';
+        if (!isDomain) {
+          // Cleared domain filter when switching back to keyword mode
+          state.filters.domainFilter = '';
+          applyFilters();
+        }
         if (isDomain) {
           const landingInput = $('#landingPageInput');
           if (landingInput) landingInput.focus();
@@ -436,10 +442,8 @@
     if (adType === 'political_and_issue_ads') {
       targetUrl.searchParams.set('ad_type', 'political_and_issue_ads');
     }
-    // search_type: keyword_unordered (default) or landing_page
-    if (searchType === 'landing_page') {
-      targetUrl.searchParams.set('search_type', 'landing_page');
-    }
+    // search_type: always keyword_unordered — domain filtering is done client-side
+    // (Facebook's landing_page search needs a full domain, not a TLD)
 
     if (activeTab?.url?.includes('facebook.com/ads/library')) {
       const tabId = activeTab.id;
@@ -486,12 +490,22 @@
   // ── Landing page domain search ────────────────────────────
   async function doLandingSearch() {
     const domain = ($('#landingPageInput')?.value || '').trim();
-    if (!domain) { toast('Enter a domain first'); return; }
+    if (!domain) { toast('Enter a domain or TLD first'); return; }
     const country = ($('#countrySelect')?.value) || 'US';
     const adType = ($('#adTypeSelect')?.value) || 'all';
-    // Strip leading dot if user typed ".xyz"
-    const cleanDomain = domain.replace(/^\.+/, '');
-    await navigateToSearch(cleanDomain, country, adType, 'landing_page');
+    // Keep leading dot if present — applyFilters uses it to distinguish
+    // TLD mode (".xyz") from substring mode ("xyz")
+    const hadDot = domain.startsWith('.');
+    const cleanDomain = (hadDot ? domain.slice(1) : domain).trim();
+    if (!cleanDomain) { toast('Enter a valid domain'); return; }
+    // Preserve original leading dot for TLD detection
+    const withDot = domain.startsWith('.') ? '.' + cleanDomain : cleanDomain;
+
+    // Store domain filter — applyFilters() filters client-side
+    state.filters.domainFilter = withDot;
+
+    // Do a broad keyword search (Facebook needs something to search)
+    await navigateToSearch('a', country, adType, 'keyword');
   }
 
   // ── Country change (auto-triggered) ───────────────────────
@@ -534,6 +548,28 @@
 
     if (state.filters.shadyOnly) {
       ads = ads.filter(ad => !!ad.isShady);
+    }
+
+    if (state.filters.domainFilter) {
+      const raw = state.filters.domainFilter.trim().toLowerCase();
+      if (!raw) return;
+      // If user typed ".xyz" — match TLD only (ends with .xyz)
+      // If user typed "xyz" (no dot) — match any domain containing that string
+      const isTld = raw.startsWith('.');
+      const matchStr = isTld ? raw : raw;
+      ads = ads.filter(ad => {
+        const domains = ad.domains || [];
+        return domains.some(d => {
+          const dd = d.toLowerCase();
+          if (isTld) {
+            // Match domains ending with this TLD exactly
+            return dd.endsWith(matchStr);
+          } else {
+            // Match any domain containing the string (substring)
+            return dd.includes(matchStr);
+          }
+        });
+      });
     }
 
     if (state.filters.selectedTlds.size > 0) {
