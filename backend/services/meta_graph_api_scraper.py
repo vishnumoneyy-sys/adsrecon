@@ -450,6 +450,7 @@ class MetaGraphApiScraper:
                 "access_token": self.access_token,
                 "fields": "id",
                 "limit": 1,
+                "ad_reached_countries": ["US"],
             }
             response = await client.get(ADS_ARCHIVE_URL, params=params)
             data = response.json()

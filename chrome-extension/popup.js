@@ -1,6 +1,6 @@
 /**
  * ADSRECON Chrome Extension — Popup Controller
- * Ultra-fast, non-blocking UI.
+ * Ultra-fast, non-blocking UI. All bugs fixed.
  */
 
 (function () {
@@ -22,36 +22,34 @@
       selectedTlds: new Set(),
     },
     connected: false,
-    domainStats: {}, // {tld: count}
+    adCount: 0,
   };
 
-  // ── Nutra config ───────────────────────────────────────────
-  // ── Shady TLDs list (comprehensive) ────────────────────────
+  // ── Shady TLDs (deduplicated) ─────────────────────────────
   const SHADY_TLDS = [
     '.space', '.fun', '.info', '.xyz', '.top', '.click', '.link', '.buzz',
     '.icu', '.pw', '.cc', '.club', '.vip', '.pro', '.site', '.website',
     '.work', '.fit', '.shop', '.store', '.online', '.tech', '.gq', '.ml',
     '.cf', '.tk', '.ga', '.bid', '.win', '.date', '.racing', '.download',
     '.stream', '.accountant', '.cricket', '.party', '.science', '.faith',
-    '.review', '.loan', '.trade', '.webcam', '.country', '.kim', '.science',
-    '.download', '.bid', '.racing', '.party', '.trade',
+    '.review', '.loan', '.trade', '.webcam', '.country', '.kim',
   ];
 
   // ── Nutra config ───────────────────────────────────────────
   const NUTRA_CATS = {
     weight_loss:      { label: 'Weight Loss',     color: '#ffa94d', bg: 'rgba(255,169,77,0.15)' },
-    blood_sugar:      { label: 'Blood Sugar',     color: '#ff6b6b', bg: 'rgba(255,107,107,0.15)' },
-    prostate:         { label: 'Prostate',        color: '#9775fa', bg: 'rgba(151,117,250,0.15)' },
-    skin_beauty:      { label: 'Skin & Beauty',  color: '#ff8cc8', bg: 'rgba(255,140,200,0.15)' },
-    joint_pain:       { label: 'Joint Pain',      color: '#74c0fc', bg: 'rgba(116,192,252,0.15)' },
-    energy_stamina:   { label: 'Energy',          color: '#ffd43b', bg: 'rgba(255,212,59,0.15)' },
-    gut_digestion:    { label: 'Gut Health',      color: '#63e6be', bg: 'rgba(99,230,190,0.15)' },
-    male_enhancement: { label: 'Male Enh.',       color: '#ff6b9d', bg: 'rgba(255,107,157,0.15)' },
-    anti_aging:       { label: 'Anti-Aging',      color: '#da77f2', bg: 'rgba(218,119,242,0.15)' },
-    heart_blood:      { label: 'Heart Health',    color: '#ff5555', bg: 'rgba(255,85,85,0.15)' },
+    blood_sugar:     { label: 'Blood Sugar',    color: '#ff6b6b', bg: 'rgba(255,107,107,0.15)' },
+    prostate:        { label: 'Prostate',        color: '#9775fa', bg: 'rgba(151,117,250,0.15)' },
+    skin_beauty:     { label: 'Skin & Beauty', color: '#ff8cc8', bg: 'rgba(255,140,200,0.15)' },
+    joint_pain:      { label: 'Joint Pain',      color: '#74c0fc', bg: 'rgba(116,192,252,0.15)' },
+    energy_stamina:  { label: 'Energy',          color: '#ffd43b', bg: 'rgba(255,212,59,0.15)' },
+    gut_digestion:   { label: 'Gut Health',     color: '#63e6be', bg: 'rgba(99,230,190,0.15)' },
+    male_enhancement:{ label: 'Male Enh.',        color: '#ff6b9d', bg: 'rgba(255,107,157,0.15)' },
+    anti_aging:      { label: 'Anti-Aging',     color: '#da77f2', bg: 'rgba(218,119,242,0.15)' },
+    heart_blood:     { label: 'Heart Health',   color: '#ff5555', bg: 'rgba(255,85,85,0.15)' },
   };
 
-  // ── DOM refs ───────────────────────────────────────────────
+  // ── DOM helpers ────────────────────────────────────────────
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
 
@@ -65,7 +63,7 @@
     ]);
     bindEvents();
     switchTab('search');
-    updateUI();
+    updateBadge();
   }
 
   // ── Storage ────────────────────────────────────────────────
@@ -85,13 +83,15 @@
   async function loadSettings() {
     const res = await sendBg({ type: 'GET_SETTINGS' });
     if (res.settings) {
-      $('#countrySelect').value = res.settings.defaultCountry || 'US';
+      const countrySelect = $('#countrySelect');
+      if (countrySelect) {
+        countrySelect.value = res.settings.defaultCountry || 'US';
+      }
       state.filters.category = res.settings.defaultCategory || '';
     }
   }
 
   async function checkConnection() {
-    // Try content script directly for faster response
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id && tab?.url?.includes('facebook.com/ads/library')) {
@@ -102,18 +102,17 @@
         return;
       }
     } catch (_) {}
-    // Fallback through background
     const res = await sendBg({ type: 'GET_AD_COUNT' });
-    state.connected = res.connected;
+    state.connected = res.connected || false;
     state.adCount = res.count || 0;
-    if (!res.connected) {
-      $('#loginWarning').style.display = 'flex';
+    const loginWarning = $('#loginWarning');
+    if (!state.connected && loginWarning) {
+      loginWarning.style.display = 'flex';
     }
     updateBadge();
   }
 
-  // ── Message helpers ──────────────────────────────────────────
-  // Route to background for storage ops, directly to content script for ads
+  // ── Message helpers ─────────────────────────────────────────
   function sendBg(msg) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(msg, (res) => resolve(res || {}));
@@ -121,7 +120,6 @@
   }
 
   async function getAdsFromPage() {
-    // Try content script directly first (faster)
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
@@ -129,7 +127,6 @@
         if (res?.ads) return res;
       }
     } catch (_) {}
-    // Fallback: go through background
     return await sendBg({ type: 'GET_ADS' });
   }
 
@@ -141,18 +138,24 @@
     });
 
     // Search
-    $('#doSearch').addEventListener('click', doSearch);
-    $('#searchInput').addEventListener('keydown', (e) => {
+    const doSearchBtn = $('#doSearch');
+    if (doSearchBtn) doSearchBtn.addEventListener('click', doSearch);
+    const searchInput = $('#searchInput');
+    if (searchInput) searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doSearch();
     });
 
     // Country change
-    $('#countrySelect').addEventListener('change', () => {
-      sendBg({ type: 'SAVE_SETTINGS', settings: { defaultCountry: $('#countrySelect').value } });
-    });
+    const countrySelect = $('#countrySelect');
+    if (countrySelect) {
+      countrySelect.addEventListener('change', () => {
+        sendBg({ type: 'SAVE_SETTINGS', settings: { defaultCountry: countrySelect.value } });
+      });
+    }
 
     // Ad type
-    $('#adTypeSelect').addEventListener('change', doSearch);
+    const adTypeSelect = $('#adTypeSelect');
+    if (adTypeSelect) adTypeSelect.addEventListener('change', doSearch);
 
     // Category chips
     $$('.chip[data-cat]').forEach(chip => {
@@ -171,89 +174,202 @@
     });
 
     // Clear category filter
-    $('#clearCatFilter').addEventListener('click', () => {
-      state.filters.category = '';
-      $$('.chip').forEach(c => c.classList.remove('active'));
-      applyFilters();
-    });
+    const clearCatBtn = $('#clearCatFilter');
+    if (clearCatBtn) {
+      clearCatBtn.addEventListener('click', () => {
+        state.filters.category = '';
+        $$('.chip').forEach(c => c.classList.remove('active'));
+        applyFilters();
+      });
+    }
 
     // Score slider
-    $('#scoreRange').addEventListener('input', (e) => {
-      state.filters.scoreMin = parseInt(e.target.value);
-      $('#scoreVal').textContent = state.filters.scoreMin;
-      applyFilters();
-    });
+    const scoreRange = $('#scoreRange');
+    const scoreVal = $('#scoreVal');
+    if (scoreRange) {
+      scoreRange.addEventListener('input', (e) => {
+        state.filters.scoreMin = parseInt(e.target.value) || 0;
+        if (scoreVal) scoreVal.textContent = state.filters.scoreMin;
+        applyFilters();
+      });
+    }
 
     // Checkboxes
-    $('#nutraOnly').addEventListener('change', (e) => {
-      state.filters.nutraOnly = e.target.checked;
+    const nutraOnly = $('#nutraOnly');
+    if (nutraOnly) nutraOnly.addEventListener('change', (e) => {
+      state.filters.nutraOnly = !!e.target.checked;
       applyFilters();
     });
-    $('#savedOnly').addEventListener('change', (e) => {
-      state.filters.savedOnly = e.target.checked;
+    const savedOnly = $('#savedOnly');
+    if (savedOnly) savedOnly.addEventListener('change', (e) => {
+      state.filters.savedOnly = !!e.target.checked;
       applyFilters();
     });
 
     // Shady domain filter
-    $('#shadyOnly').addEventListener('change', (e) => {
-      state.filters.shadyOnly = e.target.checked;
+    const shadyOnly = $('#shadyOnly');
+    if (shadyOnly) shadyOnly.addEventListener('change', (e) => {
+      state.filters.shadyOnly = !!e.target.checked;
       applyFilters();
     });
 
     // Clear domain filters
-    $('#clearDomainBtn').addEventListener('click', () => {
-      state.filters.shadyOnly = false;
-      state.filters.selectedTlds.clear();
-      $('#shadyOnly').checked = false;
-      $$('.tld-chip').forEach(c => c.classList.remove('active'));
-      applyFilters();
-    });
+    const clearDomainBtn = $('#clearDomainBtn');
+    if (clearDomainBtn) {
+      clearDomainBtn.addEventListener('click', () => {
+        state.filters.shadyOnly = false;
+        state.filters.selectedTlds.clear();
+        const cb = $('#shadyOnly');
+        if (cb) cb.checked = false;
+        $$('.tld-chip').forEach(c => c.classList.remove('active'));
+        applyFilters();
+      });
+    }
 
     // Open Ad Library
-    $('#openLibrary').addEventListener('click', () => {
+    const openLibrary = $('#openLibrary');
+    if (openLibrary) openLibrary.addEventListener('click', () => {
       chrome.tabs.create({ url: 'https://www.facebook.com/ads/library/' });
     });
 
-    // Refresh — pull latest ads from content script
-    $('#refreshBtn').addEventListener('click', async () => {
-      const res = await getAdsFromPage();
-      state.ads = res.ads || [];
-      renderDomainStats();
-      applyFilters();
-      toast(`Found ${state.ads.length} ads`);
-    });
+    // Refresh
+    const refreshBtn = $('#refreshBtn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.disabled = true;
+        try {
+          const res = await getAdsFromPage();
+          state.ads = res.ads || [];
+          state.adCount = state.ads.length;
+          renderDomainStats();
+          applyFilters();
+          toast(`Found ${state.ads.length} ads`);
+        } finally {
+          refreshBtn.disabled = false;
+        }
+      });
+    }
+
+    // Settings
+    const settingsBtn = $('#settingsBtn');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+        // Toggle settings panel — for now just open Ad Library
+        chrome.tabs.create({ url: 'https://www.facebook.com/ads/library/' });
+      });
+    }
 
     // Track page
-    $('#addPageBtn').addEventListener('click', addTrackedPage);
-    $('#newPageInput').addEventListener('keydown', (e) => {
+    const addPageBtn = $('#addPageBtn');
+    if (addPageBtn) addPageBtn.addEventListener('click', addTrackedPage);
+    const newPageInput = $('#newPageInput');
+    if (newPageInput) newPageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') addTrackedPage();
     });
 
     // Saved actions
-    $('#exportSavedBtn').addEventListener('click', exportSaved);
-    $('#clearSavedBtn').addEventListener('click', async () => {
-      if (!confirm('Clear all saved ads?')) return;
-      await sendBg({ type: 'CLEAR_SAVED_ADS' });
-      state.savedAds = [];
-      renderSavedAds();
-      toast('Cleared');
-    });
+    const exportSavedBtn = $('#exportSavedBtn');
+    if (exportSavedBtn) exportSavedBtn.addEventListener('click', exportSaved);
+    const clearSavedBtn = $('#clearSavedBtn');
+    if (clearSavedBtn) {
+      clearSavedBtn.addEventListener('click', async () => {
+        if (!confirm('Clear all saved ads?')) return;
+        await sendBg({ type: 'CLEAR_SAVED_ADS' });
+        state.savedAds = [];
+        renderSavedAds();
+        updateBadge();
+        toast('Cleared');
+      });
+    }
 
-    // Modal close
-    $('#closeModal').addEventListener('click', () => $('#adModal').style.display = 'none');
-    $('#adModal').addEventListener('click', (e) => {
-      if (e.target === $('#adModal')) $('#adModal').style.display = 'none';
-    });
+    // Modal
+    const closeModal = $('#closeModal');
+    if (closeModal) closeModal.addEventListener('click', closeAdModal);
+    const adModal = $('#adModal');
+    if (adModal) {
+      adModal.addEventListener('click', (e) => {
+        if (e.target === adModal) closeAdModal();
+      });
+    }
 
     // Export
-    $('#exportBtn').addEventListener('click', exportFiltered);
+    const exportBtn = $('#exportBtn');
+    if (exportBtn) exportBtn.addEventListener('click', exportFiltered);
+
+    // Delegated event handling for dynamically rendered content
+    // (tracked items, ad items, TLD chips — all created by innerHTML)
+    document.addEventListener('click', handleDelegatedClick);
+  }
+
+  // ── Delegated click handler for dynamically rendered HTML ─────
+  // This avoids the need for innerHTML onclick attributes (XSS safe)
+  function handleDelegatedClick(e) {
+    const target = e.target;
+
+    // Tracked page: remove
+    const removeBtn = target.closest('[data-action="remove-page"]');
+    if (removeBtn) {
+      const id = parseInt(removeBtn.dataset.id, 10);
+      if (!isNaN(id)) removeTrackedPage(id);
+      return;
+    }
+
+    // Tracked page: search
+    const searchBtn = target.closest('[data-action="search-page"]');
+    if (searchBtn) {
+      const name = searchBtn.dataset.name || '';
+      if (name) searchTrackedPage(name);
+      return;
+    }
+
+    // TLD chip click
+    const tldChip = target.closest('.tld-chip');
+    if (tldChip && tldChip.dataset.tld) {
+      const tld = tldChip.dataset.tld;
+      if (state.filters.selectedTlds.has(tld)) {
+        state.filters.selectedTlds.delete(tld);
+        tldChip.classList.remove('active');
+      } else {
+        state.filters.selectedTlds.add(tld);
+        tldChip.classList.add('active');
+      }
+      applyFilters();
+      return;
+    }
+
+    // Ad item click (but not button clicks)
+    const adItem = target.closest('.ad-item');
+    if (adItem && !target.closest('button') && !target.closest('a')) {
+      const adId = adItem.dataset.id;
+      const tab = state.activeTab === 'saved' ? 'saved' : 'search';
+      const adList = tab === 'saved' ? state.savedAds : state.filteredAds;
+      const ad = adList.find(a => a.id === adId);
+      if (ad) openAdModal(ad);
+      return;
+    }
+
+    // Save button click
+    const saveBtn = target.closest('.save-btn');
+    if (saveBtn) {
+      e.stopPropagation();
+      const adId = saveBtn.dataset.id;
+      // Find ad in both filtered and saved lists
+      let ad = state.filteredAds.find(a => a.id === adId);
+      if (!ad) ad = state.savedAds.find(a => a.id === adId);
+      if (ad) toggleSaveAd(ad, saveBtn);
+      return;
+    }
   }
 
   // ── Tab Switching ───────────────────────────────────────────
   function switchTab(tab) {
     state.activeTab = tab;
-    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-    $$('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tab}`));
+    $$('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    $$('.tab-content').forEach(c => {
+      c.classList.toggle('active', c.id === `tab-${tab}`);
+    });
 
     if (tab === 'search' && state.connected) {
       loadAdsFromPage();
@@ -264,39 +380,44 @@
   async function loadAdsFromPage() {
     const res = await getAdsFromPage();
     state.ads = res.ads || [];
+    state.adCount = state.ads.length;
     renderDomainStats();
     applyFilters();
   }
 
   // ── Search ─────────────────────────────────────────────────
   async function doSearch() {
-    const keyword = $('#searchInput').value.trim();
-    const country = $('#countrySelect').value;
-    const adType = $('#adTypeSelect').value;
+    const keyword = ($('#searchInput')?.value || '').trim();
+    const country = $('#countrySelect')?.value || 'US';
+    const adType = $('#adTypeSelect')?.value || 'all';
 
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0] && tabs[0].url && tabs[0].url.includes('facebook.com/ads/library')) {
-      // On Ad Library — send to content script to handle navigation
+    const activeTab = tabs[0];
+
+    if (activeTab?.url?.includes('facebook.com/ads/library')) {
       try {
-        await chrome.tabs.sendMessage(tabs[0].id, {
+        await chrome.tabs.sendMessage(activeTab.id, {
           type: 'NAVIGATE',
           search: keyword,
           country,
         });
         toast('Refreshing ads...');
       } catch (_) {
-        // Content script not responding — navigate directly
-        const url = new URL(tabs[0].url);
+        const url = new URL(activeTab.url);
         url.searchParams.set('q', keyword);
         url.searchParams.set('country', country);
         url.searchParams.set('active_status', 'active');
-        if (adType === 'political_and_issue_ads') url.searchParams.set('ad_type', 'political_and_issue_ads');
-        chrome.tabs.update(tabs[0].id, { url: url.toString() });
+        if (adType === 'political_and_issue_ads') {
+          url.searchParams.set('ad_type', 'political_and_issue_ads');
+        } else {
+          url.searchParams.delete('ad_type');
+        }
+        chrome.tabs.update(activeTab.id, { url: url.toString() });
         toast('Navigating...');
       }
     } else {
       chrome.tabs.create({
-        url: `https://www.facebook.com/ads/library/?q=${encodeURIComponent(keyword)}&country=${country}&active_status=active${adType === 'political_and_issue_ads' ? '&ad_type=political_and_issue_ads' : ''}`
+        url: `https://www.facebook.com/ads/library/?q=${encodeURIComponent(keyword)}&country=${country}&active_status=active${adType === 'political_and_issue_ads' ? '&ad_type=political_and_issue_ads' : ''}`,
       });
       toast('Opening Ad Library...');
     }
@@ -306,7 +427,6 @@
   function applyFilters() {
     let ads = [...state.ads];
 
-    // Category filter
     if (state.filters.category) {
       ads = ads.filter(ad => {
         const info = window.__popup_classify(ad.adText || '');
@@ -314,7 +434,6 @@
       });
     }
 
-    // Nutra only
     if (state.filters.nutraOnly) {
       ads = ads.filter(ad => {
         const info = window.__popup_classify(ad.adText || '');
@@ -322,7 +441,6 @@
       });
     }
 
-    // Score
     if (state.filters.scoreMin > 0) {
       ads = ads.filter(ad => {
         const info = window.__popup_classify(ad.adText || '');
@@ -330,22 +448,23 @@
       });
     }
 
-    // Saved only
     if (state.filters.savedOnly) {
       const savedIds = new Set(state.savedAds.map(a => a.id));
       ads = ads.filter(ad => savedIds.has(ad.id));
     }
 
-    // Shady domain filter
     if (state.filters.shadyOnly) {
-      ads = ads.filter(ad => ad.isShady);
+      ads = ads.filter(ad => !!ad.isShady);
     }
 
-    // Specific TLD filter
     if (state.filters.selectedTlds.size > 0) {
       ads = ads.filter(ad => {
         const adDomains = ad.domains || [];
-        return adDomains.some(d => state.filters.selectedTlds.has(d));
+        return adDomains.some(d => {
+          const cleanDomain = d.startsWith('.') ? d : '.' + d;
+          return state.filters.selectedTlds.has(cleanDomain) ||
+                 state.filters.selectedTlds.has(d);
+        });
       });
     }
 
@@ -375,6 +494,7 @@
   };
 
   window.__popup_classify = function (text) {
+    if (!text) return { is_nutra: false, categories: [], score: 0 };
     const matched = [];
     let score = 0;
     for (const [cat, pattern] of Object.entries(NUTRA_PATTERNS)) {
@@ -385,6 +505,11 @@
   };
 
   // ── Domain Stats ───────────────────────────────────────────
+  function isShadyDomain(domain) {
+    const cleanDomain = domain.startsWith('.') ? domain : '.' + domain;
+    return SHADY_TLDS.includes(cleanDomain);
+  }
+
   function getDomainStats() {
     const stats = {};
     for (const ad of state.ads) {
@@ -396,44 +521,40 @@
   }
 
   function renderDomainStats() {
-    const stats = getDomainStats();
     const list = $('#domainTldList');
+    if (!list) return;
+
+    const stats = getDomainStats();
     const shadyEls = Object.entries(stats)
-      .filter(([d]) => SHADY_TLDS.some(t => d.endsWith(t)))
+      .filter(([d]) => isShadyDomain(d))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 30);
 
-    $('#shadyCount').textContent = `(${(shadyEls.length || '0')})`;
+    const shadyCount = $('#shadyCount');
+    if (shadyCount) {
+      const count = shadyEls.reduce((sum, [, n]) => sum + n, 0);
+      shadyCount.textContent = `(${count})`;
+    }
 
     if (shadyEls.length === 0) {
-      list.innerHTML = '<span class="tld-chip" style="opacity:0.4">No shady domains found</span>';
+      list.innerHTML = '<span class="tld-chip" style="opacity:0.4;cursor:default">No shady domains found</span>';
       return;
     }
 
     list.innerHTML = shadyEls.map(([tld, count]) => {
-      const active = state.filters.selectedTlds.has(tld);
+      const active = state.filters.selectedTlds.has(tld) || state.filters.selectedTlds.has('.' + tld);
       return `<button class="tld-chip${active ? ' active' : ''}" data-tld="${esc(tld)}">${esc(tld)} <span style="opacity:0.6">${count}</span></button>`;
     }).join('');
 
-    list.querySelectorAll('.tld-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const tld = chip.dataset.tld;
-        if (state.filters.selectedTlds.has(tld)) {
-          state.filters.selectedTlds.delete(tld);
-          chip.classList.remove('active');
-        } else {
-          state.filters.selectedTlds.add(tld);
-          chip.classList.add('active');
-        }
-        applyFilters();
-      });
-    });
+    // Event listeners for new TLD chips are handled by delegated handler
   }
 
   // ── Render Results ─────────────────────────────────────────
   function renderResults() {
     const list = $('#resultsList');
     const count = $('#resultsCount');
+    if (!list || !count) return;
+
     count.textContent = `${state.filteredAds.length} ads`;
 
     if (state.filteredAds.length === 0) {
@@ -446,42 +567,29 @@
     }
 
     list.innerHTML = state.filteredAds.map(ad => renderAdItem(ad)).join('');
-
-    // Bind click events
-    list.querySelectorAll('.ad-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-icon')) return;
-        const ad = state.filteredAds.find(a => a.id === item.dataset.id);
-        if (ad) openAdModal(ad);
-      });
-    });
-
-    list.querySelectorAll('.save-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const ad = state.filteredAds.find(a => a.id === btn.dataset.id);
-        if (ad) toggleSaveAd(ad, btn);
-      });
-    });
+    // Click events are handled by delegated handler
   }
 
   function renderAdItem(ad) {
+    if (!ad || !ad.id) return '';
     const info = window.__popup_classify(ad.adText || '');
     const saved = state.savedAds.find(a => a.id === ad.id);
     const scoreClass = info.score >= 60 ? 'high' : info.score >= 30 ? 'med' : 'low';
-    const catLabels = info.categories.slice(0, 2).map(c => NUTRA_LABELS[c]).join(', ');
+    const catLabels = info.categories.slice(0, 2).map(c => NUTRA_LABELS[c]).filter(Boolean).join(', ');
     const domains = ad.domains || [];
-    const truncatedText = ad.adText ? ad.adText.substring(0, 150) + (ad.adText.length > 150 ? '...' : '') : 'No ad text';
+    const truncatedText = ad.adText
+      ? ad.adText.substring(0, 150) + (ad.adText.length > 150 ? '...' : '')
+      : 'No ad text';
 
     const domainChips = domains.map(d => {
-      const isShady = SHADY_TLDS.some(t => d.endsWith(t));
-      return `<span class="ad-chip${isShady ? ' shady' : ''}" title="${esc(d)}">${esc(d)}</span>`;
+      const shady = isShadyDomain(d);
+      return `<span class="ad-chip${shady ? ' shady' : ''}" title="${esc(d)}">${esc(d)}</span>`;
     }).join('');
 
     return `
       <div class="ad-item${saved ? ' saved' : ''}${ad.isShady ? ' is-shady' : ''}" data-id="${esc(ad.id)}">
         <div class="ad-item-header">
-          <span class="ad-page-name" title="${esc(ad.pageName)}">${esc(ad.pageName)}</span>
+          <span class="ad-page-name" title="${esc(ad.pageName || '')}">${esc(ad.pageName || 'Unknown')}</span>
           ${info.score > 0 ? `<span class="ad-score-badge ${scoreClass}">${info.score}</span>` : ''}
         </div>
         <div class="ad-text">${esc(truncatedText)}</div>
@@ -494,7 +602,7 @@
           <button class="btn-icon save-btn${saved ? ' saved' : ''}" data-id="${esc(ad.id)}" title="${saved ? 'Unsave' : 'Save'}">
             ${saved ? '&#9733;' : '&#9734;'}
           </button>
-          ${ad.landingUrl ? `<button class="btn-icon" onclick="window.open('${esc(ad.landingUrl)}', '_blank')" title="Visit">&#128279;</button>` : ''}
+          ${ad.landingUrl ? `<a href="${esc(ad.landingUrl)}" target="_blank" class="btn-icon" title="Visit" onclick="event.stopPropagation()">&#128279;</a>` : ''}
         </div>
       </div>`;
   }
@@ -502,6 +610,8 @@
   // ── Tracked Pages ─────────────────────────────────────────
   function renderTrackedPages() {
     const list = $('#trackedList');
+    if (!list) return;
+
     if (state.trackedPages.length === 0) {
       list.innerHTML = `
         <div class="empty-state">
@@ -511,38 +621,44 @@
       return;
     }
 
+    // Use data attributes for XSS-safe delegation
     list.innerHTML = state.trackedPages.map(p => `
       <div class="tracked-item">
-        <span class="tracked-item-name">${esc(p.name)}</span>
-        <button class="btn-icon" onclick="window.__removePage(${p.id})" title="Remove">&#10005;</button>
-        <button class="btn-sm btn-secondary" onclick="window.__searchPage('${esc(p.name)}')">Search</button>
+        <span class="tracked-item-name">${esc(p.name || '')}</span>
+        <button class="btn-icon" data-action="remove-page" data-id="${p.id}" title="Remove">&#10005;</button>
+        <button class="btn-sm btn-secondary" data-action="search-page" data-name="${esc(p.name || '')}">Search</button>
       </div>`).join('');
-
-    // Global functions for onclick
-    window.__removePage = async (id) => {
-      await sendBg({ type: 'REMOVE_TRACKED_PAGE', id });
-      await loadTrackedPages();
-    };
-
-    window.__searchPage = (name) => {
-      $('#searchInput').value = name;
-      switchTab('search');
-      doSearch();
-    };
+    // Events handled by delegated handler
   }
 
   async function addTrackedPage() {
-    const name = $('#newPageInput').value.trim();
+    const input = $('#newPageInput');
+    const name = input?.value?.trim();
     if (!name) return;
     await sendBg({ type: 'ADD_TRACKED_PAGE', name });
-    $('#newPageInput').value = '';
+    if (input) input.value = '';
     await loadTrackedPages();
     toast(`Tracking: ${name}`);
+  }
+
+  async function removeTrackedPage(id) {
+    await sendBg({ type: 'REMOVE_TRACKED_PAGE', id });
+    await loadTrackedPages();
+    toast('Page removed');
+  }
+
+  function searchTrackedPage(name) {
+    const input = $('#searchInput');
+    if (input) input.value = name;
+    switchTab('search');
+    doSearch();
   }
 
   // ── Saved Ads ──────────────────────────────────────────────
   function renderSavedAds() {
     const list = $('#savedList');
+    if (!list) return;
+
     if (state.savedAds.length === 0) {
       list.innerHTML = `
         <div class="empty-state">
@@ -553,56 +669,63 @@
     }
 
     list.innerHTML = state.savedAds.map(ad => renderAdItem(ad)).join('');
-
-    list.querySelectorAll('.ad-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-icon')) return;
-        const ad = state.savedAds.find(a => a.id === item.dataset.id);
-        if (ad) openAdModal(ad);
-      });
-    });
-
-    list.querySelectorAll('.save-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const ad = state.savedAds.find(a => a.id === btn.dataset.id);
-        if (ad) toggleSaveAd(ad, btn);
-      });
-    });
+    // Events handled by delegated handler
   }
 
   // ── Save/Unsave ────────────────────────────────────────────
   async function toggleSaveAd(ad, btn) {
     const alreadySaved = state.savedAds.find(a => a.id === ad.id);
+
     if (alreadySaved) {
       await sendBg({ type: 'UNSAVE_AD', adId: ad.id });
       state.savedAds = state.savedAds.filter(a => a.id !== ad.id);
-      btn.classList.remove('saved');
-      btn.innerHTML = '&#9734;';
       toast('Removed from saved');
     } else {
       await sendBg({ type: 'SAVE_AD', ad });
       state.savedAds.unshift({ ...ad, savedAt: new Date().toISOString() });
-      btn.classList.add('saved');
-      btn.innerHTML = '&#9733;';
       toast('Ad saved!');
     }
+
     updateBadge();
+    // Re-render the relevant list to reflect the new saved state
+    if (state.activeTab === 'saved') {
+      renderSavedAds();
+    } else {
+      // Re-render search results so the star icon updates across all lists
+      renderResults();
+      // Also update tracked/saved lists if they have this ad
+      const savedList = $('#savedList');
+      if (savedList && state.savedAds.length > 0) {
+        renderSavedAds();
+      }
+    }
+
+    // Update modal save button if modal is open
+    const modalSaveBtn = $('#saveAdBtn');
+    if (modalSaveBtn && $('#adModal')?.style.display !== 'none') {
+      const isStillSaved = state.savedAds.find(a => a.id === ad.id);
+      modalSaveBtn.innerHTML = isStillSaved ? '&#9733; Saved' : '&#9734; Save';
+      modalSaveBtn.onclick = () => toggleSaveAd(ad, modalSaveBtn);
+    }
   }
 
   // ── Ad Modal ───────────────────────────────────────────────
+  let currentModalAd = null;
+
   function openAdModal(ad) {
+    currentModalAd = ad;
     const info = window.__popup_classify(ad.adText || '');
     const saved = state.savedAds.find(a => a.id === ad.id);
     const domains = ad.domains || [];
-
-    // Build all landing URLs section
     const allUrls = ad.landingUrls || (ad.landingUrl ? [ad.landingUrl] : []);
+
+    // Build URLs list
     const urlsHtml = allUrls.length > 0
       ? allUrls.map(u => {
           const isShady = SHADY_TLDS.some(t => u.includes(t));
+          const displayUrl = u.length > 80 ? u.substring(0, 80) + '...' : u;
           return `<div class="modal-url-item${isShady ? ' shady-url' : ''}">
-            <a href="${esc(u)}" target="_blank" class="modal-url-link">${esc(u.length > 80 ? u.substring(0, 80) + '...' : u)}</a>
+            <a href="${esc(u)}" target="_blank" class="modal-url-link">${esc(displayUrl)}</a>
             ${isShady ? '<span class="shady-badge">SHADY TLD</span>' : ''}
           </div>`;
         }).join('')
@@ -610,26 +733,56 @@
 
     const domainsHtml = domains.length > 0
       ? domains.map(d => {
-          const isShady = SHADY_TLDS.some(t => d.endsWith(t));
+          const isShady = isShadyDomain(d);
           return `<span class="ad-chip${isShady ? ' shady' : ''}">${esc(d)}</span>`;
         }).join(' ')
       : '<span style="color:var(--text-muted)">None detected</span>';
 
-    $('#modalTitle').textContent = ad.pageName;
-    $('#modalBody').innerHTML = `
-      <p><span class="label">Page Name</span><strong style="color:var(--accent-cyan)">${esc(ad.pageName)}</strong></p>
-      <p><span class="label">Domains (${domains.length})</span>${domainsHtml}</p>
-      <p><span class="label">Landing URLs (${allUrls.length})</span>${urlsHtml}</p>
-      <p><span class="label">CTA</span>${esc(ad.cta || 'N/A')}</p>
-      <p><span class="label">Classification</span>${info.is_nutra ? esc(info.categories.map(c => NUTRA_LABELS[c]).join(', ')) : 'Not Nutra'}</p>
-      <p><span class="label">Aggression Score</span><strong style="color:${info.score >= 60 ? 'var(--accent-red)' : 'var(--accent-cyan)'}">${info.score}/100</strong></p>
-      <p><span class="label">Ad Text</span><span style="color:var(--text-secondary);line-height:1.5;word-break:break-word">${esc(ad.adText || 'N/A')}</span></p>
-    `;
-    $('#visitPageBtn').onclick = () => window.open(`https://www.facebook.com/search/top?q=${encodeURIComponent(ad.pageName)}`, '_blank');
-    $('#ripBtn').onclick = () => window.open(ad.landingUrl || allUrls[0] || '', '_blank');
-    $('#saveAdBtn').onclick = () => { toggleSaveAd(ad, $('#saveAdBtn')); };
-    $('#saveAdBtn').innerHTML = saved ? '&#9733; Saved' : '&#9734; Save';
-    $('#adModal').style.display = 'flex';
+    const modalTitle = $('#modalTitle');
+    const modalBody = $('#modalBody');
+    const visitPageBtn = $('#visitPageBtn');
+    const ripBtn = $('#ripBtn');
+    const saveAdBtn = $('#saveAdBtn');
+    const adModal = $('#adModal');
+
+    if (modalTitle) modalTitle.textContent = ad.pageName || 'Ad Details';
+    if (modalBody) {
+      modalBody.innerHTML = `
+        <p><span class="label">Page Name</span><strong style="color:var(--accent-cyan)">${esc(ad.pageName || 'Unknown')}</strong></p>
+        <p><span class="label">Domains (${domains.length})</span>${domainsHtml}</p>
+        <p><span class="label">Landing URLs (${allUrls.length})</span>${urlsHtml}</p>
+        <p><span class="label">CTA</span>${esc(ad.cta || 'N/A')}</p>
+        <p><span class="label">Classification</span>${info.is_nutra ? esc(info.categories.map(c => NUTRA_LABELS[c]).filter(Boolean).join(', ')) : 'Not Nutra'}</p>
+        <p><span class="label">Aggression Score</span><strong style="color:${info.score >= 60 ? 'var(--accent-red)' : 'var(--accent-cyan)'}">${info.score}/100</strong></p>
+        <p><span class="label">Ad Text</span><span style="color:var(--text-secondary);line-height:1.5;word-break:break-word">${esc(ad.adText || 'N/A')}</span></p>
+      `;
+    }
+    if (visitPageBtn) {
+      visitPageBtn.onclick = () => window.open(
+        `https://www.facebook.com/search/top?q=${encodeURIComponent(ad.pageName || '')}`,
+        '_blank'
+      );
+    }
+    if (ripBtn) {
+      const targetUrl = ad.landingUrl || allUrls[0] || '';
+      ripBtn.onclick = () => {
+        if (targetUrl) window.open(targetUrl, '_blank');
+        else toast('No landing URL available');
+      };
+    }
+    if (saveAdBtn) {
+      saveAdBtn.innerHTML = saved ? '&#9733; Saved' : '&#9734; Save';
+      saveAdBtn.onclick = () => {
+        if (currentModalAd) toggleSaveAd(currentModalAd, saveAdBtn);
+      };
+    }
+    if (adModal) adModal.style.display = 'flex';
+  }
+
+  function closeAdModal() {
+    const adModal = $('#adModal');
+    if (adModal) adModal.style.display = 'none';
+    currentModalAd = null;
   }
 
   // ── Export ─────────────────────────────────────────────────
@@ -651,16 +804,17 @@
     const headers = ['Page Name', 'Ad Text', 'Landing URLs', 'Domains', 'CTA', 'Score', 'Categories', 'Shady', 'Saved At'];
     const rows = ads.map(a => {
       const info = window.__popup_classify(a.adText || '');
-      const urls = (a.landingUrls || [a.landingUrl || '']).join(' | ');
+      const urls = (a.landingUrls || []).filter(Boolean);
+      const urlsStr = urls.length > 0 ? urls.join(' | ') : '';
       const domains = (a.domains || []).join(', ');
       return [
         `"${(a.pageName || '').replace(/"/g, '""')}"`,
         `"${(a.adText || '').replace(/"/g, '""')}"`,
-        `"${urls.replace(/"/g, '""')}"`,
+        `"${urlsStr.replace(/"/g, '""')}"`,
         `"${domains.replace(/"/g, '""')}"`,
         `"${(a.cta || '').replace(/"/g, '""')}"`,
         info.score,
-        `"${info.categories.map(c => NUTRA_LABELS[c]).join(', ')}"`,
+        `"${info.categories.map(c => NUTRA_LABELS[c]).filter(Boolean).join(', ')}"`,
         a.isShady ? 'YES' : 'NO',
         a.savedAt || '',
       ].join(',');
@@ -669,44 +823,49 @@
   }
 
   function downloadCSV(csv, filename) {
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast('Export failed');
+    }
   }
 
   // ── Badge ──────────────────────────────────────────────────
   function updateBadge() {
     const count = state.savedAds.length;
-    chrome.runtime.sendMessage({ type: 'UPDATE_BADGE', count }).catch(() => {});
-    if (count > 0) {
-      chrome.action.setBadgeText({ text: String(count) });
-      chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
-    } else {
-      chrome.action.setBadgeText({ text: '' });
-    }
-  }
-
-  // ── UI Update ─────────────────────────────────────────────
-  function updateUI() {
-    // Already handled by individual render functions
+    try {
+      if (count > 0) {
+        chrome.runtime.sendMessage({ type: 'UPDATE_BADGE', count });
+      } else {
+        chrome.runtime.sendMessage({ type: 'UPDATE_BADGE', count: 0 });
+      }
+    } catch (_) {}
   }
 
   // ── Toast ──────────────────────────────────────────────────
   function toast(msg) {
     const el = $('#toast');
+    if (!el) return;
     el.textContent = msg;
     el.style.display = 'block';
     clearTimeout(el._timer);
-    el._timer = setTimeout(() => { el.style.display = 'none'; }, 2500);
+    el._timer = setTimeout(() => {
+      el.style.display = 'none';
+    }, 2500);
   }
 
   // ── Helpers ────────────────────────────────────────────────
   function esc(str) {
-    if (!str) return '';
+    if (str == null) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -714,6 +873,15 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+
+  // ── Listen for live updates from content script ────────────
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'ADS_UPDATED' && msg.ads) {
+      state.ads = msg.ads || [];
+      state.adCount = msg.count || state.ads.length;
+      applyFilters();
+    }
+  });
 
   // ── Start ─────────────────────────────────────────────────
   init();

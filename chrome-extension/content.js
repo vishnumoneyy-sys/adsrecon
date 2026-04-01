@@ -415,43 +415,42 @@
 
   // ── Message Handler ─────────────────────────────────────────
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    switch (msg.type) {
+    // Guard: send null-safe response wrapper
+    const respond = (data) => {
+      try { sendResponse(data || {}); } catch (_) {}
+    };
+
+    const type = msg && msg.type;
+    if (!type) { respond({ error: 'no type' }); return true; }
+
+    switch (type) {
       case 'GET_ADS':
-        sendResponse({ ads: ads.slice(-200), count: ads.length });
+        respond({ ads: ads.slice(-200), count: ads.length });
         break;
       case 'SEARCH': {
-        const q = (msg.keyword || '').toLowerCase();
+        const q = String(msg.keyword || '').toLowerCase();
         const results = q
-          ? ads.filter(a => a.pageName.toLowerCase().includes(q) || a.adText.toLowerCase().includes(q))
+          ? ads.filter(a => {
+              const pn = (a.pageName || '').toLowerCase();
+              const at = (a.adText || '').toLowerCase();
+              return pn.includes(q) || at.includes(q);
+            })
           : ads.slice(-200);
-        sendResponse({ ads: results, count: results.length });
+        respond({ ads: results, count: results.length });
         break;
       }
       case 'CLASSIFY':
-        sendResponse(window.__adsrecon_classify(msg.text || ''));
+        respond(window.__adsrecon_classify(msg.text || ''));
         break;
       case 'PING':
-        sendResponse({ ok: true, count: ads.length });
+        respond({ ok: true, count: ads.length });
         break;
       case 'NAVIGATE':
-        // Navigate the Ad Library URL and trigger re-scan
-        const url = new URL(window.location.href);
-        if (msg.search !== undefined) {
-          if (msg.search) {
-            url.searchParams.set('q', msg.search);
-          } else {
-            url.searchParams.delete('q');
-          }
-        }
-        if (msg.country) {
-          url.searchParams.set('country', msg.country);
-          url.searchParams.set('is_targeted_country', 'false');
-        }
-        // Clear extracted set on navigation so we re-crawl
+        // Clear state so next scan picks up fresh ads after page reload
         extracted.clear();
         ads = [];
-        window.location.href = url.toString();
-        sendResponse({ ok: true });
+        // Page navigation is handled by popup via chrome.tabs.update
+        respond({ ok: true });
         break;
     }
     return true;

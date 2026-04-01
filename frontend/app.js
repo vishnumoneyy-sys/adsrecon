@@ -1060,6 +1060,8 @@
       return;
     }
 
+    // Has real ads — remove state class, clear any stale state divs, render cards
+    grid.classList.remove('loading', 'empty', 'error');
     grid.innerHTML = state.filteredAds.map(ad => renderAdCard(ad)).join('');
 
     // Bind card events

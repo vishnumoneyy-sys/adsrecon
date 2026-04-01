@@ -662,10 +662,20 @@ async def save_settings(token: str = Query(...)):
         raise HTTPException(status_code=400, detail=f"Token validation failed: {str(e)}")
     save_fb_token(token)
     logger.info("Facebook access token saved successfully")
+
+    # Auto-clear demo data when a real token is saved
+    from models.ad import Ad
+    from sqlalchemy import delete
+    async with async_session_maker() as db:
+        result = await db.execute(delete(Ad).where(Ad.library_id.like("demo_%")))
+        await db.commit()
+        demo_cleared = result.rowcount
+
     return {
         "success": True,
-        "message": "Token saved. Graph API scraping is now active (free, no proxies needed).",
+        "message": f"Token saved. Cleared {demo_cleared} demo ads. Graph API scraping is now active.",
         "token_masked": ("*" * 20 + token[-6:]),
+        "demo_cleared": demo_cleared,
     }
 
 

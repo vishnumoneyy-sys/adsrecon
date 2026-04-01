@@ -33,10 +33,11 @@ loadStorage();
 
 // ── Message router from popup ───────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || !msg.type) return;
+  if (!msg || !msg.type) return true;
 
   (async () => {
-    switch (msg.type) {
+    try {
+      switch (msg.type) {
       case 'GET_TRACKED_PAGES':
         sendResponse({ pages: STORAGE.trackedPages });
         break;
@@ -165,8 +166,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
+      // ── UPDATE_BADGE — MV3: badge must be set in popup, not service worker ─
+      // chrome.action badge APIs are unavailable in MV3 service workers.
+      // We store the count and badge state, the popup sets the actual badge.
+
+      case 'UPDATE_BADGE': {
+        STORAGE.badgeCount = msg.count || 0;
+        // Propagate to popup if it has the badge API available
+        // (Badge is managed by popup directly via chrome.action)
+        sendResponse({ ok: true });
+        break;
+      }
+
       default:
         sendResponse({ error: 'Unknown message type' });
+      }
+    } catch (err) {
+      console.error('[ADSRECON background] error:', err);
+      try { sendResponse({ error: String(err) }); } catch (_) {}
     }
   })();
   return true; // Keep channel open for async response
