@@ -145,17 +145,26 @@
       if (e.key === 'Enter') doSearch();
     });
 
-    // Country change
+    // Country change — auto-search when country changes
     const countrySelect = $('#countrySelect');
     if (countrySelect) {
       countrySelect.addEventListener('change', () => {
-        sendBg({ type: 'SAVE_SETTINGS', settings: { defaultCountry: countrySelect.value } });
+        const newCountry = countrySelect.value;
+        sendBg({ type: 'SAVE_SETTINGS', settings: { defaultCountry: newCountry } });
+        doCountrySearch(newCountry);
       });
     }
 
-    // Ad type
+    // Ad type change — auto-search when ad type changes
     const adTypeSelect = $('#adTypeSelect');
-    if (adTypeSelect) adTypeSelect.addEventListener('change', doSearch);
+    if (adTypeSelect) {
+      adTypeSelect.addEventListener('change', () => {
+        const keyword = ($('#searchInput')?.value || '').trim();
+        const country = ($('#countrySelect')?.value) || 'US';
+        const adType = ($('#adTypeSelect')?.value) || 'all';
+        navigateToSearch(keyword, country, adType);
+      });
+    }
 
     // Category chips
     $$('.chip[data-cat]').forEach(chip => {
@@ -250,12 +259,11 @@
       });
     }
 
-    // Settings
+    // Settings — show extension info toast
     const settingsBtn = $('#settingsBtn');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', () => {
-        // Toggle settings panel — for now just open Ad Library
-        chrome.tabs.create({ url: 'https://www.facebook.com/ads/library/' });
+        toast('ADSRECON v1.0.0 — Meta Ad Intelligence');
       });
     }
 
@@ -303,6 +311,8 @@
 
   // ── Delegated click handler for dynamically rendered HTML ─────
   // This avoids the need for innerHTML onclick attributes (XSS safe)
+  // Note: visit-link uses onclick="event.stopPropagation()" in the <a> tag itself
+  // (inline onclick is acceptable here since URL is pre-escaped by esc())
   function handleDelegatedClick(e) {
     const target = e.target;
 
@@ -385,42 +395,65 @@
     applyFilters();
   }
 
-  // ── Search ─────────────────────────────────────────────────
-  async function doSearch() {
-    const keyword = ($('#searchInput')?.value || '').trim();
-    const country = $('#countrySelect')?.value || 'US';
-    const adType = $('#adTypeSelect')?.value || 'all';
-
+  // ── Core navigation helper ──────────────────────────────────
+  async function navigateToSearch(keyword, country, adType) {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const activeTab = tabs[0];
 
+    const targetUrl = new URL('https://www.facebook.com/ads/library/');
+    targetUrl.searchParams.set('q', keyword);
+    targetUrl.searchParams.set('country', country);
+    targetUrl.searchParams.set('active_status', 'active');
+    if (adType === 'political_and_issue_ads') {
+      targetUrl.searchParams.set('ad_type', 'political_and_issue_ads');
+    }
+
     if (activeTab?.url?.includes('facebook.com/ads/library')) {
-      try {
-        await chrome.tabs.sendMessage(activeTab.id, {
-          type: 'NAVIGATE',
-          search: keyword,
-          country,
-        });
-        toast('Refreshing ads...');
-      } catch (_) {
-        const url = new URL(activeTab.url);
-        url.searchParams.set('q', keyword);
-        url.searchParams.set('country', country);
-        url.searchParams.set('active_status', 'active');
-        if (adType === 'political_and_issue_ads') {
-          url.searchParams.set('ad_type', 'political_and_issue_ads');
-        } else {
-          url.searchParams.delete('ad_type');
-        }
-        chrome.tabs.update(activeTab.id, { url: url.toString() });
-        toast('Navigating...');
+      const tabId = activeTab.id;
+      const loadPromise = new Promise((resolve) => {
+        const handler = (updatedTabId, changeInfo) => {
+          if (updatedTabId === tabId && changeInfo.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(handler);
+            clearTimeout(timeout);
+            resolve();
+          }
+        };
+        chrome.tabs.onUpdated.addListener(handler);
+        const timeout = setTimeout(resolve, 5000);
+      });
+      chrome.tabs.update(tabId, { url: targetUrl.toString() });
+      toast('Searching...');
+      await loadPromise;
+      await delay(1500);
+      const res = await getAdsFromPage();
+      state.ads = res.ads || [];
+      state.adCount = state.ads.length;
+      renderDomainStats();
+      applyFilters();
+      if (state.ads.length > 0) {
+        toast(`Found ${state.ads.length} ads`);
+      } else {
+        toast('Scroll page to load more ads');
       }
     } else {
-      chrome.tabs.create({
-        url: `https://www.facebook.com/ads/library/?q=${encodeURIComponent(keyword)}&country=${country}&active_status=active${adType === 'political_and_issue_ads' ? '&ad_type=political_and_issue_ads' : ''}`,
-      });
+      chrome.tabs.create({ url: targetUrl.toString() });
       toast('Opening Ad Library...');
     }
+  }
+
+  // ── Search ─────────────────────────────────────────────────
+  async function doSearch() {
+    const keyword = ($('#searchInput')?.value || '').trim();
+    const country = ($('#countrySelect')?.value) || 'US';
+    const adType = ($('#adTypeSelect')?.value) || 'all';
+    await navigateToSearch(keyword, country, adType);
+  }
+
+  // ── Country change (auto-triggered) ───────────────────────
+  async function doCountrySearch(newCountry) {
+    const keyword = ($('#searchInput')?.value || '').trim();
+    const adType = ($('#adTypeSelect')?.value) || 'all';
+    await navigateToSearch(keyword, newCountry, adType);
   }
 
   // ── Filters ────────────────────────────────────────────────
@@ -864,6 +897,8 @@
   }
 
   // ── Helpers ────────────────────────────────────────────────
+  function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
   function esc(str) {
     if (str == null) return '';
     return String(str)
