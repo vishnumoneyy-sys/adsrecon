@@ -1336,11 +1336,21 @@
       });
     }
 
-    // 13. Language filter — only show ads in selected language(s)
+    // 13. Language filter — show ads where ANY text variation matches selected language(s)
     if (state.filters.selectedLanguages.size > 0) {
       ads = ads.filter(ad => {
-        const detected = detectLanguage(ad.adText || '');
-        return detected && state.filters.selectedLanguages.has(detected);
+        // Build full text: primary adText + all variations
+        const allTexts = [ad.adText || '', ...(ad.adTextVariations || [])];
+        const detectedLangs = detectLanguage(allTexts);
+        // detectLanguage returns a Set when given an array; check if ANY match
+        if (detectedLangs instanceof Set) {
+          for (const lang of detectedLangs) {
+            if (state.filters.selectedLanguages.has(lang)) return true;
+          }
+          return false;
+        }
+        // String return (backwards compat for string input)
+        return detectedLangs && state.filters.selectedLanguages.has(detectedLangs);
       });
     }
 
@@ -1469,8 +1479,25 @@
     NG: 'en', GH: 'en', KE: 'en', TZ: 'en', UG: 'en', ET: 'en', SN: 'fr', CM: 'en', ZM: 'en', ZW: 'en', BW: 'en', MZ: 'pt', AO: 'pt', GH: 'en',
   };
 
+  // ── Detect language from a string or array of strings ─────────
+  // Blackhat ads use multi-variation: for filter matching, check EACH variation
+  // separately. Returns a Set of all detected languages (to match "any variation").
   function detectLanguage(text) {
+    // Accept array: detect each variation individually, return Set
+    if (Array.isArray(text)) {
+      const langs = new Set();
+      for (const t of text) {
+        if (!t) continue;
+        const lang = _detectLangCore(t.trim());
+        if (lang) langs.add(lang);
+      }
+      return langs; // Return Set for array input
+    }
     if (!text) return '';
+    return _detectLangCore(text); // Return string for string input
+  }
+
+  function _detectLangCore(text) {
     // Count distinctive chars for each language pattern
     const counts = {};
     for (const [lang, pattern] of Object.entries(LANG_PATTERNS)) {

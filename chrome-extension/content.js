@@ -135,29 +135,69 @@
   }
 
   // ── Extract ad text ───────────────────────────────────────
+  // ── Extract ALL text variations from an ad card ─────────────────
+  // Blackhat ads often use multiple language variations in one card.
+  // Each substantial text block is captured as a separate variation.
+  function extractAllAdTextVariations(el) {
+    const variations = [];
+
+    // Method 1: data-ad-preview (most reliable — usually the primary text)
+    const preview = el.querySelector('[data-ad-preview]');
+    if (preview) {
+      const text = getText(preview).trim();
+      if (text.length > 5) variations.push(text);
+    }
+
+    // Method 2: all <p dir="auto"> paragraphs — each is a text variation
+    const ps = el.querySelectorAll('p[dir="auto"]');
+    for (const p of ps) {
+      const text = getText(p).trim();
+      // Skip if too short or already captured as preview
+      if (text.length > 15 && !variations.includes(text)) {
+        variations.push(text);
+      }
+    }
+
+    // Method 3: span[dir="auto"] with substantial text (another variation pattern)
+    const spans = el.querySelectorAll('span[dir="auto"]');
+    for (const span of spans) {
+      const text = getText(span).trim();
+      // Only capture standalone substantial blocks (potential separate variation)
+      if (text.length > 30 && !variations.includes(text)) {
+        // Check if it looks like a separate text block (not a short label)
+        const parent = span.parentElement;
+        if (parent && parent.tagName !== 'A' && !parent.querySelector('img, video')) {
+          variations.push(text);
+        }
+      }
+    }
+
+    // Method 4: aria-label blocks that contain substantial text (fallback)
+    const adAria = el.querySelectorAll('[aria-label*=" "][aria-label]');
+    for (const al of adAria) {
+      const label = al.getAttribute('aria-label') || '';
+      if (label.length > 30 && label.length < 2000 && !variations.includes(label)) {
+        const text = getText(al).trim();
+        if (text.length > 15) variations.push(label);
+      }
+    }
+
+    return variations; // may be empty
+  }
+
   function extractAdText(el) {
-    // Method 1: data-ad-preview (most reliable)
+    // Primary: first variation from extractAllAdTextVariations
+    const all = extractAllAdTextVariations(el);
+    if (all.length > 0) return all[0].substring(0, 500);
+
+    // Fallback: data-ad-preview
     const preview = el.querySelector('[data-ad-preview]');
     if (preview) {
       const text = getText(preview);
       if (text.length > 5) return text;
     }
 
-    // Method 2: elements with explicit "Ad" in aria-label
-    const adEls = el.querySelectorAll('[aria-label*="Ad"][aria-label*=" "], [aria-label*="ad"][aria-label*=" "], [aria-label*=" "][aria-label*="Ad"]');
-    for (const ael of adEls) {
-      const text = getText(ael);
-      if (text.length > 20 && text.length < 1000) return text;
-    }
-
-    // Method 3: text paragraphs inside the ad card
-    const ps = el.querySelectorAll('p[dir="auto"]');
-    if (ps.length) {
-      const texts = Array.from(ps).map(p => getText(p)).filter(t => t.length > 10);
-      if (texts.length) return texts.join(' ').substring(0, 500);
-    }
-
-    // Method 4: any substantial text content (fallback)
+    // Fallback: any substantial text
     const allText = getText(el)
       .replace(/\s+/g, ' ')
       .substring(0, 500);
@@ -358,10 +398,12 @@
       const domains = [...new Set(urls.map(getDomain).filter(Boolean))];
       const adFormat = extractFormat(div);
       const adDate = extractAdDate(div);
+      const allTextVariations = extractAllAdTextVariations(div);
       ads.push({
         id: hash,
         pageName,
         adText: text.substring(0, 500),
+        adTextVariations: allTextVariations,
         landingUrl: urls[0] || '',
         landingUrls: urls,
         domains,
@@ -393,9 +435,11 @@
       const domains = [...new Set(urls.map(getDomain).filter(Boolean))];
       const adFormat = extractFormat(p);
       const adDate = extractAdDate(p);
+      const allTextVariations = extractAllAdTextVariations(p);
       ads.push({
         id: hash, pageName,
         adText: text.substring(0, 500),
+        adTextVariations: allTextVariations,
         landingUrl: urls[0] || '',
         landingUrls: urls,
         domains,
@@ -439,9 +483,11 @@
       const domains = [...new Set(urls.map(getDomain).filter(Boolean))];
       const adFormat = extractFormat(card);
       const adDate = extractAdDate(card);
+      const allTextVariations = extractAllAdTextVariations(card);
       ads.push({
         id: hash, pageName,
         adText: text.substring(0, 500),
+        adTextVariations: allTextVariations,
         landingUrl: urls[0] || '',
         landingUrls: urls,
         domains,
