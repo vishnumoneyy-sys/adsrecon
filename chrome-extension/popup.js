@@ -1471,23 +1471,56 @@
 
   function detectLanguage(text) {
     if (!text) return '';
+    // Count distinctive chars for each language pattern
     const counts = {};
     for (const [lang, pattern] of Object.entries(LANG_PATTERNS)) {
-      // Count every character that matches (no 'g' flag on patterns, so loop each char)
       let count = 0;
       for (const char of text) { if (pattern.test(char)) count++; }
       if (count > 0) counts[lang] = count;
     }
-    // Find the language with the most matches
+    // For non-Latin scripts, English ASCII chars cannot compete with distinct
+    // Unicode blocks. Find the best non-Latin script (highest count >= 3).
+    // NOTE: Chinese chars also match the Japanese pattern range (CJK Unified).
+    // To avoid zh winning over ja, we only apply ja when the ja count is
+    // clearly dominant over zh. A simple heuristic: ja count >= zh count + 5.
+    const nonLatin = ['ar','zh','ja','ko','ru','el','th','hi','bn','he'];
+    let bestNL = { lang: '', count: 0 };
+    for (const lang of nonLatin) {
+      if (counts[lang] && counts[lang] > bestNL.count) bestNL = { lang, count: counts[lang] };
+    }
+    if (bestNL.count >= 3) {
+      // Japanese detection: only return ja if it dominates Chinese
+      // (avoids CJK overlap in mixed text)
+      if (bestNL.lang === 'ja' && counts.zh && counts.ja < counts.zh + 5) {
+        // ja not clearly dominant; fall through to Latin-script detection
+      } else {
+        return bestNL.lang;
+      }
+    }
+    // For Latin-script languages: detect by distinctive character classes.
+    // English (/[\x00-\x7F]/) always dominates in mixed text, so we only
+    // detect Latin-script languages when they have >=3 distinctive accented chars.
+    const latinLangChars = {
+      fr:  /[àâçéèêëîïôùûüÿœ]/i,
+      es:  /[áéíóúüñ¿¡àèìòùâêîôûç]/i,
+      de:  /[äöüß]/i,
+      it:  /[àèéìíòóù]/i,
+      pt:  /[ãõñçáéíóúàèìòùâêîôû]/i,
+      pl:  /[ąćęłńóśźż]/i,
+      tr:  /[çğıöşü]/i,
+    };
+    const scores = {};
+    for (const [lang, pattern] of Object.entries(latinLangChars)) {
+      let count = 0;
+      for (const char of text) { if (pattern.test(char)) count++; }
+      if (count > 0) scores[lang] = count;
+    }
     let best = { lang: '', count: 0 };
-    for (const [lang, count] of Object.entries(counts)) {
+    for (const [lang, count] of Object.entries(scores)) {
       if (count > best.count) best = { lang, count };
     }
-    // If < 3 chars detected, default to English
-    if (best.count < 3) return 'en';
-    // Map internal lang codes to our filter codes
-    const langMap = { en: 'en', ar: 'ar', zh: 'zh', ja: 'ja', ko: 'ko', ru: 'ru', el: 'el', th: 'th', hi: 'hi', bn: 'bn', he: 'he', vi: 'vi', pt: 'pt', es: 'es', fr: 'fr', de: 'de', it: 'it', nl: 'nl', pl: 'pl', tr: 'tr', id: 'id', ms: 'ms', uk: 'uk', ro: 'ro', hu: 'hu', cs: 'cs', sv: 'sv', da: 'da', no: 'no', fi: 'fi', bg: 'bg', sr: 'sr', mk: 'mk', be: 'be', fa: 'fa', ur: 'ur', ta: 'ta', te: 'te', kn: 'kn', ml: 'ml', mr: 'mr', ne: 'ne', km: 'km', lo: 'lo', my: 'my', ha: 'ha', sw: 'sw', zu: 'zu', xh: 'xh' };
-    return langMap[best.lang] || best.lang;
+    if (best.count >= 3) return best.lang;
+    return 'en';
   }
 
   // ── Classify (runs in popup) ───────────────────────────────
