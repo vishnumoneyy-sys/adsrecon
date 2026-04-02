@@ -29,6 +29,36 @@
   // ── Helpers ────────────────────────────────────────────────
   function getText(el) { return el ? el.textContent.trim() : ''; }
 
+  // Extract domain from a full URL or from a l.facebook.com redirect URL.
+  // For l.facebook.com links, the destination is encoded as the path or ?url= param.
+  function extractDomainFromUrl(rawUrl) {
+    if (!rawUrl) return '';
+    let urlStr = rawUrl;
+
+    // If it's a l.facebook.com redirect, extract the destination from path or ?url= param
+    try {
+      const parsed = new URL(rawUrl.startsWith('/') ? 'https://l.facebook.com' + rawUrl : rawUrl);
+      if (parsed.hostname === 'l.facebook.com' || parsed.hostname === 'lm.facebook.com') {
+        // Destination can be in the path or in the url= param
+        const urlParam = parsed.searchParams.get('url');
+        if (urlParam) {
+          urlStr = urlParam;
+        } else {
+          // Path like /l.php?u=https%3A%2F%2Fshop.xyz%2Flp&h=... → extract shop.xyz
+          const pathMatch = parsed.pathname.match(/[?&]u=([^&]+)/);
+          if (pathMatch) {
+            try { urlStr = decodeURIComponent(pathMatch[1]); } catch (_) { urlStr = pathMatch[1]; }
+          } else if (parsed.pathname !== '/') {
+            // Direct path redirect — the path itself is a URL
+            urlStr = parsed.pathname;
+          }
+        }
+      }
+    } catch (_) {}
+
+    return getDomain(urlStr);
+  }
+
   function getDomain(url) {
     if (!url) return '';
     try {
@@ -57,30 +87,49 @@
 
     for (const link of links) {
       let href = link.href || link.getAttribute('href') || '';
-      if (!href || href === '#' || seen.has(href)) continue;
-      seen.add(href);
+      if (!href || href === '#') continue;
 
+      // For l.facebook.com redirect links — extract destination from path or ?u= param
+      // These are the most common landing URL format in Facebook ads
+      let resolvedHref = href;
       try {
         const absHref = href.startsWith('/')
-          ? 'https://www.facebook.com' + href
+          ? 'https://l.facebook.com' + href
           : href;
         const parsed = new URL(absHref);
 
-        // Decode FB redirect params: u, url, l, q, link, goto, redir, destination
-        for (const param of ['u', 'url', 'l', 'q', 'link', 'goto', 'redir', 'destination', 'd', 'e', 'href']) {
-          const val = parsed.searchParams.get(param);
-          if (val) {
-            try { href = decodeURIComponent(val); } catch (_) { href = val; }
-            break;
+        if (parsed.hostname === 'l.facebook.com' || parsed.hostname === 'lm.facebook.com') {
+          // Try ?u= param first
+          const uParam = parsed.searchParams.get('u');
+          if (uParam) {
+            try { resolvedHref = decodeURIComponent(uParam); } catch (_) { resolvedHref = uParam; }
+          } else {
+            // Try /l.php?u=...&h=... pattern
+            const pathMatch = parsed.pathname.match(/[?&]u=([^&]+)/);
+            if (pathMatch) {
+              try { resolvedHref = decodeURIComponent(pathMatch[1]); } catch (_) { resolvedHref = pathMatch[1]; }
+            }
+          }
+        } else {
+          // Normal link — decode FB redirect params: u, url, l, q, link, goto, redir, destination
+          for (const param of ['u', 'url', 'l', 'q', 'link', 'goto', 'redir', 'destination', 'd', 'e', 'href']) {
+            const val = parsed.searchParams.get(param);
+            if (val) {
+              try { resolvedHref = decodeURIComponent(val); } catch (_) { resolvedHref = val; }
+              break;
+            }
           }
         }
-
-        // Skip FB/Meta internal domains
-        if (/^(https?:\/\/)?(www\.)?(facebook|fb|instagram|messenger|whatsapp|threads)\.com?(\/|$)/.test(href)) continue;
-        if (!href.startsWith('http')) continue;
-
-        urls.push(href);
       } catch (_) {}
+
+      if (!resolvedHref || seen.has(resolvedHref)) continue;
+      seen.add(resolvedHref);
+
+      // Skip FB/Meta internal domains
+      if (/^(https?:\/\/)?(www\.)?(facebook|fb|instagram|messenger|whatsapp|threads)\.com?(\/|$)/.test(resolvedHref)) continue;
+      if (!resolvedHref.startsWith('http')) continue;
+
+      urls.push(resolvedHref);
     }
     return [...new Set(urls)];
   }
@@ -160,6 +209,68 @@
     return '';
   }
 
+  // ── Extract ad format (image, video, carousel) ─────────────
+  function extractFormat(el) {
+    // Check aria-label for format hints
+    const label = el.getAttribute('aria-label') || '';
+    const labelLower = label.toLowerCase();
+    if (labelLower.includes('video')) return 'video';
+    if (labelLower.includes('carousel')) return 'carousel';
+
+    // Check for video element (reel/video ads)
+    if (el.querySelector('video')) return 'video';
+
+    // Check for multiple images (carousel indicator: multiple img tags or specific carousel structure)
+    const imgs = el.querySelectorAll('img[src*="scontent"]');
+    if (imgs.length >= 3) return 'carousel';
+
+    // Check for swipe/carousel indicators
+    if (el.querySelector('[aria-label*="swipe"], [aria-label*="Swipe"]')) return 'carousel';
+    if (el.querySelector('[data-pagelet*="Carousel"], [data-pagelet*="Swipeable"]')) return 'carousel';
+
+    // Check for single content image
+    if (el.querySelector('img[src*="scontent"], canvas')) return 'image';
+
+    // Check for story/Reels format
+    if (labelLower.includes('story') || labelLower.includes('reel')) return 'video';
+
+    return ''; // unknown
+  }
+
+  // ── Extract ad date from DOM ──────────────────────────────
+  function extractAdDate(el) {
+    // Look for date text in the ad card
+    const dateSelectors = [
+      '[data-pagelet*="Card"] [dir="auto"]',
+      '[data-ad-date]',
+      'span[dir="auto"]',
+    ];
+    for (const sel of dateSelectors) {
+      const els = el.querySelectorAll(sel);
+      for (const d of els) {
+        const text = d.textContent.trim();
+        if (!text) continue;
+        // Try to parse relative dates
+        const now = Date.now();
+        const rel = text.match(/(\d+)\s*hour/i);
+        if (rel) return now - parseInt(rel[1]) * 3600000;
+        const rd = text.match(/(\d+)\s*day/i);
+        if (rd) return now - parseInt(rd[1]) * 86400000;
+        const rw = text.match(/(\d+)\s*week/i);
+        if (rw) return now - parseInt(rw[1]) * 604800000;
+        const rm = text.match(/(\d+)\s*month/i);
+        if (rm) return now - parseInt(rm[1]) * 2592000000;
+        // "Active now" or "Started" with date
+        const adMatch = text.match(/(\w+\s+\d+,?\s+\d{4})/i);
+        if (adMatch) {
+          const parsed = new Date(adMatch[1]);
+          if (!isNaN(parsed)) return parsed.getTime();
+        }
+      }
+    }
+    return 0; // unknown
+  }
+
   // ── Parse a single ad element ─────────────────────────────
   function parseAd(el) {
     const hash = hashEl(el);
@@ -176,6 +287,8 @@
     const domains = [...new Set(landingUrls.map(getDomain).filter(Boolean))];
     const isShady = landingUrls.some(u => isShadyDomain(u));
 
+    const adFormat = extractFormat(el);
+    const adDate = extractAdDate(el);
     return {
       id: hash,
       pageName,
@@ -185,6 +298,9 @@
       domains,
       isShady,
       cta: extractCTA(el),
+      adFormat,
+      adDate,
+      adActive: true,  // assume active unless DOM indicates otherwise
       timestamp: Date.now(),
     };
   }
@@ -211,6 +327,15 @@
     let found = 0;
     const before = ads.length;
 
+    // Log what we're about to scan
+    const allDivs = document.querySelectorAll('div[aria-label]');
+    console.log('[ADSRECON] Scanning page:', {
+      totalAriaDivs: allDivs.length,
+      url: window.location.href,
+      readyState: document.readyState,
+      bodyChildren: document.body.children.length,
+    });
+
     // ── Strategy 1: labelled divs that look like ad cards ─────
     // These are the primary React-rendered ad containers on Ad Library
     const candidates = document.querySelectorAll('div[aria-label]');
@@ -231,6 +356,8 @@
       extracted.add(hash);
 
       const domains = [...new Set(urls.map(getDomain).filter(Boolean))];
+      const adFormat = extractFormat(div);
+      const adDate = extractAdDate(div);
       ads.push({
         id: hash,
         pageName,
@@ -240,6 +367,9 @@
         domains,
         isShady: urls.some(u => isShadyDomain(u)),
         cta: extractCTA(div),
+        adFormat,
+        adDate,
+        adActive: true,
         timestamp: Date.now(),
       });
       found++;
@@ -261,6 +391,8 @@
       extracted.add(hash);
       const urls = extractAllLandingUrls(p);
       const domains = [...new Set(urls.map(getDomain).filter(Boolean))];
+      const adFormat = extractFormat(p);
+      const adDate = extractAdDate(p);
       ads.push({
         id: hash, pageName,
         adText: text.substring(0, 500),
@@ -269,6 +401,9 @@
         domains,
         isShady: urls.some(u => isShadyDomain(u)),
         cta: extractCTA(p),
+        adFormat,
+        adDate,
+        adActive: true,
         timestamp: Date.now(),
       });
       found++;
@@ -302,6 +437,8 @@
       extracted.add(hash);
       const urls = extractAllLandingUrls(card);
       const domains = [...new Set(urls.map(getDomain).filter(Boolean))];
+      const adFormat = extractFormat(card);
+      const adDate = extractAdDate(card);
       ads.push({
         id: hash, pageName,
         adText: text.substring(0, 500),
@@ -310,6 +447,9 @@
         domains,
         isShady: urls.some(u => isShadyDomain(u)),
         cta: extractCTA(card),
+        adFormat,
+        adDate,
+        adActive: true,
         timestamp: Date.now(),
       });
       found++;
@@ -324,6 +464,7 @@
       return true;
     });
 
+    console.log('[ADSRECON] Scan complete:', { found, totalAds: ads.length, before });
     return ads.length - before;
   }
 
@@ -375,6 +516,7 @@
       ads: ads.slice(-200),
       count: ads.length,
     }).catch(() => {});
+    console.log('[ADSRECON] Broadcast update:', ads.length, 'ads');
   }
 
   // ── Nutra Classifier (popup-replicated here for classify) ──
@@ -451,6 +593,15 @@
         ads = [];
         // Page navigation is handled by popup via chrome.tabs.update
         respond({ ok: true });
+        break;
+      case 'RESCAN':
+        // Force a fresh scan of the page
+        extracted.clear();
+        ads = [];
+        const found = scanForAds();
+        broadcastUpdate();
+        console.log('[ADSRECON] RESCAN: found', found, 'ads, total:', ads.length);
+        respond({ ads: ads.slice(-200), count: ads.length, found });
         break;
     }
     return true;

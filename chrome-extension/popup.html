@@ -173,15 +173,17 @@
       <div class="ad-type-row">
         <label>Ad Type:</label>
         <select id="adTypeSelect">
-          <option value="all">All Ads</option>
+          <option value="all" selected>All Ads</option>
           <option value="political_and_issue_ads">Political / Issue Ads</option>
         </select>
       </div>
       <div class="ad-type-row">
-        <label>Search by:</label>
+        <label>Filter by:</label>
         <select id="searchTypeSelect">
-          <option value="keyword">Keyword</option>
-          <option value="domain">Domain / TLD Filter</option>
+          <option value="keyword">Keyword only</option>
+          <option value="domain">Keyword + TLD/Domain</option>
+          <option value="alltld">Keyword + All TLD Ads</option>
+          <option value="tldonly">Country + TLD Only</option>
         </select>
       </div>
       <div class="input-group" id="landingPageGroup" style="display:none">
@@ -225,12 +227,94 @@
           <span>Saved only</span>
         </label>
       </div>
+
+      <!-- Date Range Filter -->
+      <div class="filter-header" style="margin-top:8px">
+        <span class="filter-title">Date Range</span>
+        <button class="clear-btn" id="clearDateBtn">Clear</button>
+      </div>
+      <div class="date-presets" id="datePresets">
+        <button class="date-preset active" data-preset="all">All</button>
+        <button class="date-preset" data-preset="7">7d</button>
+        <button class="date-preset" data-preset="14">14d</button>
+        <button class="date-preset" data-preset="30">30d</button>
+        <button class="date-preset" data-preset="custom">Custom</button>
+      </div>
+      <div class="date-custom-row" id="dateCustomRow" style="display:none">
+        <input type="date" id="dateFrom" class="date-input" />
+        <span class="date-sep">to</span>
+        <input type="date" id="dateTo" class="date-input" />
+      </div>
+
+      <!-- Ad Format Filter -->
+      <div class="filter-header" style="margin-top:8px">
+        <span class="filter-title">Ad Format</span>
+      </div>
+      <div class="format-row">
+        <select id="formatSelect">
+          <option value="all">All Formats</option>
+          <option value="image">Image</option>
+          <option value="video">Video</option>
+          <option value="carousel">Carousel</option>
+        </select>
+        <label class="checkbox-label">
+          <input type="checkbox" id="activeOnly" checked />
+          <span>Active only</span>
+        </label>
+      </div>
+
+      <!-- CTA Button Filter -->
+      <div class="filter-header" style="margin-top:8px">
+        <span class="filter-title">CTA Buttons</span>
+        <button class="clear-btn" id="clearCtaBtn">Clear</button>
+      </div>
+      <div class="dropdown-wrapper">
+        <button class="dropdown-trigger" id="ctaDropdownBtn">
+          <span id="ctaDropdownLabel">All CTAs</span>
+          <span class="dropdown-arrow">&#9662;</span>
+        </button>
+        <div class="dropdown-panel" id="ctaDropdownPanel" style="display:none">
+          <div class="dropdown-search-wrap">
+            <input type="text" id="ctaSearchInput" placeholder="Search CTAs..." class="dropdown-search" />
+          </div>
+          <div class="cta-chip-list" id="ctaChipList"></div>
+        </div>
+      </div>
+
+      <!-- Language Filter -->
+      <div class="filter-header" style="margin-top:8px">
+        <span class="filter-title">Language</span>
+        <button class="clear-btn" id="clearLangBtn">Clear</button>
+      </div>
+      <div class="dropdown-wrapper">
+        <button class="dropdown-trigger" id="langDropdownBtn">
+          <span id="langDropdownLabel">All Languages</span>
+          <span class="dropdown-arrow">&#9662;</span>
+        </button>
+        <div class="dropdown-panel" id="langDropdownPanel" style="display:none">
+          <div class="dropdown-search-wrap">
+            <input type="text" id="langSearchInput" placeholder="Search languages..." class="dropdown-search" />
+          </div>
+          <div class="cta-chip-list" id="langChipList"></div>
+        </div>
+      </div>
+
+      <!-- UTM Filter -->
+      <div class="filter-header" style="margin-top:8px">
+        <span class="filter-title">UTM / Link Filter</span>
+        <button class="clear-btn" id="clearUtmBtn">Clear</button>
+      </div>
+      <div class="utm-row">
+        <input type="text" id="utmInput" placeholder="e.g. utm_source=Google, utm_medium=facebook" />
+      </div>
     </div>
 
     <!-- Results -->
     <div class="results-section">
       <div class="results-header">
         <span class="results-count" id="resultsCount">0 ads</span>
+        <span class="debug-info" id="debugInfo" style="display:none;font-size:9px;color:var(--accent-orange)"></span>
+        <button class="btn-sm btn-secondary" id="scanBtn">&#8635; Scan</button>
         <button class="btn-sm btn-secondary" id="exportBtn">Export CSV</button>
       </div>
       <div class="results-list" id="resultsList">
@@ -250,8 +334,8 @@
       </div>
       <div class="domain-controls">
         <label class="toggle-label">
-          <input type="checkbox" id="shadyOnly" />
-          <span class="toggle-text">Shady TLDs only</span>
+          <input type="checkbox" id="hideClean" />
+          <span class="toggle-text">Hide standard TLDs</span>
           <span class="toggle-hint" id="shadyCount">(0)</span>
         </label>
       </div>
