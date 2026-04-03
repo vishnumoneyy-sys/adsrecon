@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Deletion Instructions - ADSRECON by Cronos Media LLC</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #0a0a12; color: #e0e0e0; line-height: 1.8; padding: 60px 20px; }
+  .container { max-width: 700px; margin: 0 auto; }
+  h1 { color: #00f5d4; font-size: 2.2em; margin-bottom: 10px; border-bottom: 2px solid #00f5d4; padding-bottom: 15px; }
+  p { margin-bottom: 18px; color: #c0c0c0; }
+  .box { background: #111120; border: 1px solid #00f5d433; border-radius: 10px; padding: 30px; margin: 30px 0; }
+  .box h2 { color: #00f5d4; margin-bottom: 15px; }
+  .email { display: inline-block; background: #00f5d4; color: #0a0a12; font-weight: bold; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 1.1em; margin: 10px 0; }
+  .email:hover { background: #00d4b3; }
+  .steps { counter-reset: step; padding-left: 0; list-style: none; }
+  .steps li { counter-increment: step; margin-bottom: 20px; padding-left: 50px; position: relative; color: #c0c0c0; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 34px; height: 34px; background: #00f5d4; color: #0a0a12; border-radius: 50%; text-align: center; line-height: 34px; font-weight: bold; font-size: 0.9em; }
+  .note { background: #1a1a2e; border-left: 4px solid #00f5d4; padding: 15px; margin: 20px 0; color: #a0a0a0; font-size: 0.95em; }
+  .contact { background: #111120; border: 1px solid #00f5d433; border-radius: 8px; padding: 20px; margin-top: 30px; }
+  .contact strong { color: #00f5d4; }
+  a { color: #00f5d4; }
+  .company { margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Data Deletion Instructions</h1>
+  <div class="company">
+    <strong>Cronos Media LLC</strong><br>
+    123 Business Park Street, Suite 400<br>
+    Austin, Texas 78701<br>
+    United States
+  </div>
+
+  <p>ADSRECON stores data locally in your browser only. We do not maintain a server-side database of your personal information. This page explains how you can delete all data associated with your use of the ADSRECON browser extension and service.</p>
+
+  <div class="box">
+    <h2>Option 1: Delete All Local Data (Immediate)</h2>
+    <p>Since ADSRECON stores data locally in your browser, deletion is immediate and does not require contacting us:</p>
+    <ol class="steps">
+      <li>Open Google Chrome and navigate to <code style="color:#00f5d4;">chrome://extensions</code></li>
+      <li>Find <strong>ADSRECON</strong> in your installed extensions list</li>
+      <li>Click <strong>Details</strong> to expand extension info</li>
+      <li>Click <strong>Storage</strong> (or "Extension storage")</li>
+      <li>Click <strong>Clear all data</strong> to remove all stored ads, tracked pages, saved searches, API tokens, and settings</li>
+    </ol>
+    <p style="margin-top: 15px;">Alternatively: Right-click the ADSRECON icon in your browser toolbar → <strong>Options</strong> → <strong>Clear All Data</strong> button.</p>
+  </div>
+
+  <div class="box">
+    <h2>What Data Gets Deleted</h2>
+    <p>Clearing ADSRECON extension storage removes:</p>
+    <ul style="margin: 10px 0 10px 30px; color: #c0c0c0;">
+      <li>All saved ads and tracked pages</li>
+      <li>Filter settings and search preferences</li>
+      <li>Facebook/Meta API access token (if configured)</li>
+      <li>Extension state, history, and cache</li>
+      <li>CSV exports and downloaded data</li>
+    </ul>
+  </div>
+
+  <div class="box">
+    <h2>Option 2: Request Server-Side Data Deletion</h2>
+    <p>If you have contacted us and we hold any of your personal data on our servers, we will delete it within <strong>30 days</strong> of receiving your verified request, in accordance with applicable data protection laws including GDPR and CCPA.</p>
+    <p>To submit a data deletion request:</p>
+    <a class="email" href="mailto:adityawaliawalia@gmail.com?subject=Data%20Deletion%20Request&body=Name:%0D%0AEmail:%0D%0ARequest%20Details:%0D%0A">adityawaliawalia@gmail.com</a>
+    <p style="margin-top: 15px;">Include your full name, email address, and a description of the data you are requesting to be deleted. We will confirm receipt within 3 business days and complete deletion within 30 days.</p>
+  </div>
+
+  <div class="box">
+    <h2>Data We Receive from Meta</h2>
+    <p>ADSRECON accesses publicly available advertising data from Meta's Ad Library API. This data is collected directly by you through the extension and is not stored on our servers. Meta's own data policies govern their Ad Library data. To understand how Meta handles your data, review <a href="https://www.facebook.com/about/privacy">Meta's Privacy Policy</a>.</p>
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> Deleting data from ADSRECON does not affect data held by Meta Platforms, Inc. Contact Meta directly for their data retention and deletion policies regarding your activity on their platforms.
+  </div>
+
+  <div class="contact">
+    <strong>Contact for Data Deletion</strong><br>
+    <strong>Cronos Media LLC</strong><br>
+    123 Business Park Street, Suite 400<br>
+    Austin, Texas 78701<br>
+    United States<br>
+    Email: <a href="mailto:adityawaliawalia@gmail.com">adityawaliawalia@gmail.com</a><br>
+    Response time: within 30 days of verified request
+  </div>
+</div>
+</body>
+</html>
